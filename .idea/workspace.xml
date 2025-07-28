@@ -1,0 +1,195 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="AutoImportSettings">
+    <option name="autoReloadType" value="SELECTIVE" />
+  </component>
+  <component name="ChangeListManager">
+    <list default="true" id="087d3cca-8740-4e9e-818b-6024f54da4f1" name="Changes" comment="Updated future-predictions-Myrmidon branch to reflect &quot;Future comparisons/Myrmidon&quot; folder in Dropbox, by removing 2 extra files and updating other files.">
+      <change beforePath="$PROJECT_DIR$/Bubble chart.ipynb" beforeDir="false" afterPath="$PROJECT_DIR$/Bubble chart.ipynb" afterDir="false" />
+    </list>
+    <option name="SHOW_DIALOG" value="false" />
+    <option name="HIGHLIGHT_CONFLICTS" value="true" />
+    <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+    <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="Git.Settings">
+    <option name="RECENT_BRANCH_BY_REPOSITORY">
+      <map>
+        <entry key="$PROJECT_DIR$" value="future-predictions-Myrmidon" />
+      </map>
+    </option>
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+    <option name="SWAP_SIDES_IN_COMPARE_BRANCHES" value="true" />
+  </component>
+  <component name="GitHubPullRequestSearchHistory">{
+  &quot;lastFilter&quot;: {
+    &quot;state&quot;: &quot;OPEN&quot;,
+    &quot;assignee&quot;: &quot;katyaov&quot;
+  }
+}</component>
+  <component name="GithubPullRequestsUISettings">{
+  &quot;selectedUrlAndAccountId&quot;: {
+    &quot;url&quot;: &quot;https://github.com/katyaov/Coral-Model.git&quot;,
+    &quot;accountId&quot;: &quot;c83829c1-a096-4209-97da-80b71cf03aba&quot;
+  }
+}</component>
+  <component name="ProjectColorInfo">{
+  &quot;associatedIndex&quot;: 4
+}</component>
+  <component name="ProjectId" id="2ytBEo45dZMluMCnzBOK4vSsE1R" />
+  <component name="ProjectViewState">
+    <option name="hideEmptyMiddlePackages" value="true" />
+    <option name="showLibraryContents" value="true" />
+  </component>
+  <component name="PropertiesComponent">{
+  &quot;keyToString&quot;: {
+    &quot;ASKED_SHARE_PROJECT_CONFIGURATION_FILES&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;Katya-updates&quot;,
+    &quot;last_opened_file_path&quot;: &quot;/Users/katyaovsyanikova/Documents/GitHub/Coral-Model&quot;,
+    &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
+    &quot;node.js.detected.package.tslint&quot;: &quot;true&quot;,
+    &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
+    &quot;node.js.selected.package.tslint&quot;: &quot;(autodetect)&quot;,
+    &quot;nodejs_package_manager_path&quot;: &quot;npm&quot;,
+    &quot;settings.editor.selected.configurable&quot;: &quot;com.jetbrains.python.configuration.PyActiveSdkModuleConfigurable&quot;,
+    &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
+  }
+}</component>
+  <component name="PyConsoleOptionsProvider">
+    <option name="myPythonConsoleState">
+      <console-settings sdk-home="$USER_HOME$/miniconda3/bin/python">
+        <option name="sdk">
+          <Sdk />
+        </option>
+        <option name="mySdkHome" value="$USER_HOME$/miniconda3/bin/python" />
+        <option name="mySdk">
+          <Sdk />
+        </option>
+      </console-settings>
+    </option>
+  </component>
+  <component name="RecentsManager">
+    <key name="CopyFile.RECENT_KEYS">
+      <recent name="$PROJECT_DIR$" />
+    </key>
+    <key name="MoveFile.RECENT_KEYS">
+      <recent name="$PROJECT_DIR$" />
+    </key>
+  </component>
+  <component name="SharedIndexes">
+    <attachedChunks>
+      <set>
+        <option value="bundled-js-predefined-d6986cc7102b-1632447f56bf-JavaScript-PY-243.26053.29" />
+        <option value="bundled-python-sdk-b1dbf8ef85a6-4df51de95216-com.jetbrains.pycharm.pro.sharedIndexes.bundled-PY-243.26053.29" />
+      </set>
+    </attachedChunks>
+  </component>
+  <component name="SpellCheckerSettings" RuntimeDictionaries="0" Folders="0" CustomDictionaries="0" DefaultDictionary="application-level" UseSingleDictionary="true" transferred="true" />
+  <component name="TaskManager">
+    <task active="true" id="Default" summary="Default task">
+      <changelist id="087d3cca-8740-4e9e-818b-6024f54da4f1" name="Changes" comment="" />
+      <created>1750643881543</created>
+      <option name="number" value="Default" />
+      <option name="presentableId" value="Default" />
+      <updated>1750643881543</updated>
+      <workItem from="1750643882906" duration="4072000" />
+      <workItem from="1750670601847" duration="2957000" />
+      <workItem from="1750673605713" duration="9997000" />
+      <workItem from="1752565193836" duration="213000" />
+      <workItem from="1752565420657" duration="2529000" />
+      <workItem from="1753087351955" duration="5939000" />
+    </task>
+    <task id="LOCAL-00001" summary="Updated calibration-Myrmidon branch to reflect &quot;Myrmidon Happy Reef&quot; folder in Dropbox, by removing 2 extra files and updating other files.">
+      <option name="closed" value="true" />
+      <created>1750674014703</created>
+      <option name="number" value="00001" />
+      <option name="presentableId" value="LOCAL-00001" />
+      <option name="project" value="LOCAL" />
+      <updated>1750674014703</updated>
+    </task>
+    <task id="LOCAL-00002" summary="Updated case-studies-Bonaire branch to reflect &quot;Bonaire with disturbances&quot; folder in Dropbox, by removing 2 extra files and updating other files.">
+      <option name="closed" value="true" />
+      <created>1750810711365</created>
+      <option name="number" value="00002" />
+      <option name="presentableId" value="LOCAL-00002" />
+      <option name="project" value="LOCAL" />
+      <updated>1750810711365</updated>
+    </task>
+    <task id="LOCAL-00003" summary="Updated case-studies-Geoffrey-Bay branch to reflect &quot;BGeoffrey Bay&quot; folder in Dropbox, by removing 2 extra files and updating other files.">
+      <option name="closed" value="true" />
+      <created>1750810974805</created>
+      <option name="number" value="00003" />
+      <option name="presentableId" value="LOCAL-00003" />
+      <option name="project" value="LOCAL" />
+      <updated>1750810974805</updated>
+    </task>
+    <task id="LOCAL-00004" summary="Updated case-studies-Moorea branch to reflect &quot;Moorea disturbances&quot; folder in Dropbox, by removing 2 extra files and updating other files.">
+      <option name="closed" value="true" />
+      <created>1750811138766</created>
+      <option name="number" value="00004" />
+      <option name="presentableId" value="LOCAL-00004" />
+      <option name="project" value="LOCAL" />
+      <updated>1750811138766</updated>
+    </task>
+    <task id="LOCAL-00005" summary="Updated case-studies-Moorea branch to reflect &quot;Moorea disturbances&quot; folder in Dropbox, by removing 2 extra files and updating other files.">
+      <option name="closed" value="true" />
+      <created>1750811276259</created>
+      <option name="number" value="00005" />
+      <option name="presentableId" value="LOCAL-00005" />
+      <option name="project" value="LOCAL" />
+      <updated>1750811276259</updated>
+    </task>
+    <task id="LOCAL-00006" summary="Updated future-predictions-Bonaire branch to reflect &quot;Future comparisons/Bonaire&quot; folder in Dropbox, by removing 2 extra files and updating other files.">
+      <option name="closed" value="true" />
+      <created>1750811520465</created>
+      <option name="number" value="00006" />
+      <option name="presentableId" value="LOCAL-00006" />
+      <option name="project" value="LOCAL" />
+      <updated>1750811520465</updated>
+    </task>
+    <task id="LOCAL-00007" summary="Updated future-predictions-Myrmidon branch to reflect &quot;Future comparisons/Myrmidon&quot; folder in Dropbox, by removing 2 extra files and updating other files.">
+      <option name="closed" value="true" />
+      <created>1750811713369</created>
+      <option name="number" value="00007" />
+      <option name="presentableId" value="LOCAL-00007" />
+      <option name="project" value="LOCAL" />
+      <updated>1750811713369</updated>
+    </task>
+    <task id="LOCAL-00008" summary="Updated future-predictions-Myrmidon branch to reflect &quot;Future comparisons/Myrmidon&quot; folder in Dropbox, by removing 2 extra files and updating other files.">
+      <option name="closed" value="true" />
+      <created>1753087785795</created>
+      <option name="number" value="00008" />
+      <option name="presentableId" value="LOCAL-00008" />
+      <option name="project" value="LOCAL" />
+      <updated>1753087785795</updated>
+    </task>
+    <option name="localTasksCounter" value="9" />
+    <servers />
+  </component>
+  <component name="TypeScriptGeneratedFilesManager">
+    <option name="version" value="3" />
+  </component>
+  <component name="Vcs.Log.Tabs.Properties">
+    <option name="TAB_STATES">
+      <map>
+        <entry key="MAIN">
+          <value>
+            <State />
+          </value>
+        </entry>
+      </map>
+    </option>
+  </component>
+  <component name="VcsManagerConfiguration">
+    <MESSAGE value="Updated calibration-Myrmidon branch to reflect &quot;Myrmidon Happy Reef&quot; folder in Dropbox, by removing 2 extra files and updating other files." />
+    <MESSAGE value="Updated case-studies-Bonaire branch to reflect &quot;Bonaire with disturbances&quot; folder in Dropbox, by removing 2 extra files and updating other files." />
+    <MESSAGE value="Updated case-studies-Geoffrey-Bay branch to reflect &quot;BGeoffrey Bay&quot; folder in Dropbox, by removing 2 extra files and updating other files." />
+    <MESSAGE value="Updated case-studies-Myrmidon branch to reflect &quot;Myrmidon disturbance&quot; folder in Dropbox, by removing 2 extra files and updating other files." />
+    <MESSAGE value="Updated case-studies-Moorea branch to reflect &quot;Moorea disturbances&quot; folder in Dropbox, by removing 2 extra files and updating other files." />
+    <MESSAGE value="Updated future-predictions-Bonaire branch to reflect &quot;Future comparisons/Bonaire&quot; folder in Dropbox, by removing 2 extra files and updating other files." />
+    <MESSAGE value="Updated future-predictions-Myrmidon branch to reflect &quot;Future comparisons/Myrmidon&quot; folder in Dropbox, by removing 2 extra files and updating other files." />
+    <option name="LAST_COMMIT_MESSAGE" value="Updated future-predictions-Myrmidon branch to reflect &quot;Future comparisons/Myrmidon&quot; folder in Dropbox, by removing 2 extra files and updating other files." />
+  </component>
+</project>
