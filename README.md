@@ -1,5 +1,4 @@
-# Coral Growth/Decline Model in Python
-#KOV TEST CHANGE
+# Coral Growth/Decline Model in Python TEST!
 
 This Jupyter Notebook features a Python implementation of a coral growth/decline model. The model effectively simulates the growth and mortality dynamics of three distinct types of corals (Branching, Foliose, and Others) across various coral reef scenarios. These scenarios include: (i) an undisturbed condition devoid of external stressors, (ii) a bleaching scenario, and (iii) a cyclone event.
 
