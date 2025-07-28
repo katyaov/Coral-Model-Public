@@ -26,7 +26,6 @@ def get_recruited_corals(available_substrate_percentage, pop_flag = True):
     brooder_cover_cm2_per_m2 = brooder_cover_m2 * 10000 /opts.reef_area
     
     # Calculate the number of polyps that can grow on the available substrate area
-    polyp_size = 200 * 1e-4
     number_polyps = brooder_cover_cm2_per_m2/polyp_size
     number_polyps_per_cm2 = number_polyps/brooder_cover_cm2_per_m2
     
@@ -147,7 +146,6 @@ def get_retention_rate():
         A tuple containing two float values representing the retention rates for branching and other coral species, respectively.
     """
     
-  #  if opts.reef_shape in [7,8,9]: #very high rate
     #    retention_rate_bf = retention_rates_8d[0]
      #   retention_rate_o = retention_rates_4d[0]
 
@@ -214,8 +212,11 @@ def get_coral_cover_in_percentage(surface_area_df,coral_type):
         Percentage of the specified coral type on the reef.
     """
     
-    coral_cover = sum(surface_area_df[coral_type])
-    return 100*coral_cover/opts.reef_area
+    coral_cover = sum(surface_area_df[coral_type].clip(lower=0)) # to ensure to accidental zeroes creep in
+    percent_cover = 100 * coral_cover / opts.reef_area   
+
+    #to make sure this value never falls below zero
+    return max(percent_cover, 0)
 
 
 def get_total_coral_cover_in_percentage(surface_area_df):
@@ -232,14 +233,16 @@ def get_total_coral_cover_in_percentage(surface_area_df):
     float
         The total percentage coral cover on the reef based on the input surface area data.
     """
-    
+
+    # Ensure negative surface areas are treated as zero
+    clipped_df = surface_area_df.clip(lower=0)
+
     # Calculate the total surface area covered by each coral type
-    coral_cover = {i: surface_area_df[i][:].sum() for i in coral_type}
+    coral_cover = {i: clipped_df[i].sum() for i in coral_type}
     
-    # Calculate the total percentage coral cover on the reef
-    return 100*sum(coral_cover.values())/opts.reef_area
-
-
+    # Calculate and return the total percentage coral cover (non-negative)
+    percent_cover = 100 * sum(coral_cover.values()) / opts.reef_area
+    return max(percent_cover, 0)
 
 def plot_population_distribution(year, log=False):
     """

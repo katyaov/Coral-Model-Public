@@ -30,7 +30,12 @@ default_growth_rate_branching      = 5.4
 default_growth_rate_foliose         = 2.1
 default_growth_rate_other          = 0.8
 
-#slopes for calculationg new RI as RI_n= DTCC*slope + RI
+#growth rate coefficients - fixed at 2 for all morphologies for the time being
+growth_coefficient_branching = 2
+growth_coefficient_foliose = 2
+growth_coefficient_other = 2
+
+#slopes for calculating new RI as RI_n DTCC*slope + RI
 slope_max = 0.0487
 slope_min = 0.019
 slope_av = 0.0340
@@ -38,6 +43,7 @@ slope_av = 0.0340
 #egg density (Eggs/cm3)
 egg_density_spawner_branching_foliose = 375
 egg_density_spawner_other = 600
+
  #THIS CODE NEEDS CLEANING
 daily8_retention_rates_G1 = 0.95 * 0.9 * 0.8 * 0.8 * 0.7 #* 0.8 * 0.75 *  0.65  # very high NEED TO REMOVE
 daily4_retention_rates_G1 = 0.95 * 0.9 * 0.8 * 0.8  * 0.7 # very high NEED TO REMOVE
@@ -50,7 +56,6 @@ daily4_retention_rates_G3 = 0.95 * 0.8 * 0.5 * 0.3 * 0.1 # medium
  
 daily8_retention_rates_G4 = 0.825 * 0.35 * 0.1 * 0.04 * 0.02 #* 0.01 * 0.005 * 0.001 #  low
 daily4_retention_rates_G4 = 0.825 * 0.35 * 0.1 * 0.04 * 0.02 #  low
-
 
 retention_rates_8d = [daily8_retention_rates_G1, daily8_retention_rates_G2, daily8_retention_rates_G3, daily8_retention_rates_G4]
 retention_rates_4d = [daily4_retention_rates_G1, daily4_retention_rates_G2, daily4_retention_rates_G3, daily4_retention_rates_G4]
@@ -121,11 +126,6 @@ if bleaching:
 else:
     dhw_years = {0:0}
 
-# Change the rates here to change the bleaching effects
-# Smaller rates gives higher decrease in coral covers - so higher the number, the more resilient
-branching_bleaching_rate = 10
-foliose_bleaching_rate = 20
-other_bleaching_rate = 40
 
 eggs_decline_coefficient = 34
 colonies_spawning_decline_coefficient = 25
@@ -134,7 +134,6 @@ if cyclone:
     cyclone_years = cyclone_years
 else:
     cyclone_years = {0:[0,0]}
-    
     
 cyclone_bin_coefficient = 5
 
@@ -147,11 +146,6 @@ elif reef_exposure == 'exposed' or reef_exposure == 'Exposed':
 else:
     raise ValueError("reef type must be one of the following ['protected','semiprotected','exposed'].")
 
-# Change the rates to change the cyclone effects. Smaller coefficient gives less cyclone impacts
-# coefficients should be between 0 and 1. It should always be less than 1
-branching_cyclone_coefficient = 0.8 * reef_type_coefficient
-foliose_cyclone_coefficient = 0.5 * reef_type_coefficient
-other_cyclone_coefficient = 0.3 * reef_type_coefficient
 
 if not growthOnly:
     WCM_rates = pd.DataFrame({
@@ -257,6 +251,4 @@ growth_rate = pd.DataFrame({'Branching': growth_rate_branching * rate_of_decline
                             })
 
 output_folder = 'output'
-if not os.path.exists(output_folder):
-    os.makedirs(output_folder)
-
+os.makedirs(output_folder, exist_ok=True)

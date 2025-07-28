@@ -26,7 +26,7 @@ reef_exposure = 'protected'
 Initial_Rugosity          = 1.2
 
 #Total reef area (m2)
-reef_area                 = 10000
+reef_area                 = 100
 reef_shape                = 11 # 1-12 based of Black et al 1990
 
 #start and end years
@@ -69,7 +69,7 @@ custom_PSD_T0 = {
 
 #-------------------------------------------------------------------------------------
 use_custom_partial_mortality_rate = True
-# if use_custom_partial_mortality_rate is True, give your own partial colony mortality rates of each bins in percentage
+# if use_custom_partial_mortality_rate is True, give your own partial colony mortality rates for each bin in percentage
 # make sure the length of each list is the same for all the custom parameters
 custom_partial_mortality_rates_branching = [0.0163, 0.0191, 0.0219, 0.0247, 0.0275, 0.0303, 0.0330, 0.0358, 0.0386, 0.0414, 0.0442, 0.0470, 0.0498, 0.0525, 0.0553, 0.0581, 0.0609, 0.0637, 0.0665, 0.0675]
 custom_partial_mortality_rates_foliose = [0.0117, 0.0136, 0.0156, 0.0176, 0.0196, 0.0216, 0.0236, 0.0256, 0.0276, 0.0296, 0.0316, 0.0335, 0.0355, 0.0375, 0.0395, 0.0415, 0.0435, 0.0455, 0.0475, 0.048]
@@ -77,7 +77,7 @@ custom_partial_mortality_rates_other = [0.0117, 0.0136, 0.0156, 0.0176, 0.0196, 
 
 #-------------------------------------------------------------------------------------
 use_custom_whole_mortality_rate = True
-# if use_custom_whole_mortality_rate is True, give your own whole colony mortality rates of each bins in percentage
+# if use_custom_whole_mortality_rate is True, give your own whole colony mortality rates for each bin in percentage
 # make sure the length of each list is the same for all the custom parameters
 custom_wcm_branching = [20, 14.8, 14.8, 7.6, 7.6, 7.6, 7.6, 7.6, 7.6, 7.6, 7.6, 7.6, 7.6, 7.6, 7.6, 7.6, 7.6, 7.6, 7.6, 0]
 custom_wcm_foliose = [20.0, 4.0, 4.0, 4.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 0]
@@ -91,6 +91,23 @@ custom_growth_rate_branching     = 2.5
 custom_growth_rate_foliose        = 3
 custom_growth_rate_other         = 1
 
-growth_coefficient_branching = 2
-growth_coefficient_foliose = 2
-growth_coefficient_other = 2
+#----------------------------------------------------------------------------------------
+#Define average polyp size. Default value polyp_size = 200 * 1e-4
+polyp_size = 200 * 1e-4
+
+#-----------------------------------------------------------------------------------------
+# Change the rates here to change the bleaching effects
+# Smaller rates give higher decrease in coral covers - so the higher the number, the more resilient (defaults: branching = 10, foliose = 20, other = 40)
+branching_bleaching_rate = 10
+foliose_bleaching_rate = 20
+other_bleaching_rate = 40
+
+#-------------------------------------------------------------------------------------------
+
+# Change the rates to change the cyclone effects. A smaller coefficient gives less cyclone impacts
+# coefficients should be between 0 and 1. It should always be less than 1 (default values: branching = 0.8, foliose = 0.5, other = 0.3)
+branching_cyclone_coefficient = 0.8 * reef_type_coefficient
+foliose_cyclone_coefficient = 0.5 * reef_type_coefficient
+other_cyclone_coefficient = 0.3 * reef_type_coefficient
+
+#--------------------------------------------------------------------
