@@ -462,45 +462,6 @@ def plot_coral_type_population_change(coral_type, log=False, *args):
     plt.show()
     
 
-def get_initial_surface_area(PSD):
-    """
-    Returns the initial surface area of coral colonies based on the coral population size distribution (PSD) and current coral cover.
-    Parameters
-    ----------
-    PSD : pandas DataFrame
-        The coral population size distribution for different coral types in different size bins.
-
-    Returns
-    -------
-    surface_area : pandas DataFrame
-        A DataFrame containing the initial surface area of coral colonies for different coral types in different size bins.
-
-    """
-    
-    # Calculate the surface area of coral colonies based on PSD and current coral cover
-    surface_area = pd.DataFrame(
-        {
-            'Branching': [PSD['Branching'][j] * opts.current_coral_cover['Branching'] * opts.reef_area/100/100 for j in range(MaxBinId)],
-            'Foliose': [PSD['Foliose'][j] * opts.current_coral_cover['Foliose'] * opts.reef_area/100/100 for j in range(MaxBinId)],
-            'Other': [PSD['Other'][j] * opts.current_coral_cover['Other'] * opts.reef_area/100/100 for j in range(MaxBinId)],
-
-        }
-    )
-    
-    # Calculate recruitment
-    recruitment = pd.DataFrame({'Branching': get_recruited_corals(opts.available_substrate_percentage, False)[0], 'Foliose': get_recruited_corals(opts.available_substrate_percentage, False)[1], 'Other': get_recruited_corals(opts.available_substrate_percentage, False)[2] }, index=[0])
-    
-    # Set initial values for year and total coral cover
-    opts.year = 0
-    opts.total_coral_cover_df = pd.DataFrame(columns=['Year', 'Branching_Area (%)', 'Foliose_Area (%)', 'Other_Area (%)', 'total_coral_cover (%)'])
-    
-    # Calculate and store the initial total coral cover
-    yearly_total_coral_cover = pd.DataFrame({'Year':int(opts.year), 'Branching_Area (%)':opts.current_coral_cover['Branching'], 'Foliose_Area (%)':opts.current_coral_cover['Foliose'], 'Other_Area (%)':opts.current_coral_cover['Other'], 'total_coral_cover (%)': opts.current_total_coral_cover}, index=[0])
-    opts.total_coral_cover_df = pd.concat([opts.total_coral_cover_df.loc[:], yearly_total_coral_cover]).reset_index(drop = True)
-    
-    return surface_area  
-
-
 def estimate_initial_number_of_corals(x_i, reef_area, target_coral_cover):
     """
     Estimates the initial number of corals in the entire reef area based on the given number fraction, reef area,
