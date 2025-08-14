@@ -1,9 +1,11 @@
 ## User input values                   
 ## All units are (cm) or (%) unless otherwise is mentioned          
 #**********************************************************
+import pandas as pd
 
 growthOnly = False
 no_recruitment = False
+number_of_iterations = 100 #you can choose how many times to run the model (100 times is recommended)
 
 # choose from ['protected','semiprotected','exposed']
 reef_exposure = 'protected'
@@ -54,11 +56,11 @@ other_bleaching_rate = 40
 
 #-------------------------------------------------------------------------------------------
 
-# Change the rates to change the cyclone effects. A smaller coefficient gives less cyclone impacts
+# Change the rates to change the cyclone effects. A smaller coefficient gives less cyclone impact
 # coefficients should be between 0 and 1. It should always be less than 1 (default values: branching = 0.8, foliose = 0.5, other = 0.3)
-branching_cyclone_coefficient = 0.8 * reef_type_coefficient
-foliose_cyclone_coefficient = 0.5 * reef_type_coefficient
-other_cyclone_coefficient = 0.3 * reef_type_coefficient
+branching_cyclone_coefficient_input = 0.8 
+foliose_cyclone_coefficient_input = 0.5
+other_cyclone_coefficient_input = 0.3
 
 #-------------------------------------------------------------------------------------
 # choose between using your own custom parameters and the default parameters. To use

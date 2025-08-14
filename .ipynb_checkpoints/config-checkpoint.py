@@ -3,7 +3,7 @@ import random
 import pandas as pd
 import numpy as np
 import warnings
-from user_inputs_new import *
+from user_inputs import *
 
 # warnings.filterwarnings("ignore", category=RuntimeWarning, message="overflow encountered in double_scalars")
 # warnings.resetwarnings()
@@ -147,6 +147,9 @@ elif reef_exposure == 'exposed' or reef_exposure == 'Exposed':
 else:
     raise ValueError("reef type must be one of the following ['protected','semiprotected','exposed'].")
 
+branching_cyclone_coefficient = branching_cyclone_coefficient_input * reef_type_coefficient
+foliose_cyclone_coefficient = foliose_cyclone_coefficient_input * reef_type_coefficient
+other_cyclone_coefficient = other_cyclone_coefficient_input * reef_type_coefficient
 
 if not growthOnly:
     WCM_rates = pd.DataFrame({
