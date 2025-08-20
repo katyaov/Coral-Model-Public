@@ -72,6 +72,7 @@ use_custom_whole_mortality_rate = True
 use_custom_growth_rate = True
 bleaching = True
 cyclone = True
+sediment_exposure = True
 
 # Load the Excel file
 excel_path = 'coral_model_custom_parameters.xlsx'
@@ -122,3 +123,8 @@ cyclone_years = {
     if pd.notna(row['Year']) and pd.notna(row['Severity']) and pd.notna(row['Distance_km'])
 }
 
+# 8. Load Sediment Exposure
+baseline_suspended_sediment = 5
+baseline_deposited_sediment = 10
+
+sediment_df = pd.read_excel(excel_path, sheet_name='Sediment_Exposure')

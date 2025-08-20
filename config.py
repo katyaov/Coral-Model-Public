@@ -1,5 +1,6 @@
 import os
 import random
+
 import pandas as pd
 import numpy as np
 import warnings
@@ -256,3 +257,58 @@ growth_rate = pd.DataFrame({'Branching': growth_rate_branching * rate_of_decline
 
 output_folder = 'output'
 os.makedirs(output_folder, exist_ok=True)
+
+# Sediment data processing
+
+#This bit of code it needed so outputs can be calculted for each year month combo
+from user_inputs import sediment_df
+
+sediment_years_months = {
+    (int(row['Year']) - year_start, int(row['Month'])): [row['Suspended_sediment'], row['Deposited_sediment']]
+    for _, row in sediment_df.iterrows()
+    if pd.notna(row['Year']) and pd.notna(row['Month']) and pd.notna(row['Suspended_sediment']) and pd.notna(row['Deposited_sediment'])
+}
+
+#calculate additional sediment above baseline values
+from user_inputs import baseline_suspended_sediment, baseline_deposited_sediment, year_start
+
+def calculate_additional_sediment():
+    """
+    Returns a dictionary with keys (year, month) and values [additional_suspended, additional_deposited].
+    Values are non-negative (minimum 0).
+    """
+    additional_sediment = {}
+    for (year_offset, month), values in sediment_years_months.items():
+        suspended, deposited = values
+        year = year_start + year_offset
+        add_suspended = max(suspended - baseline_suspended_sediment, 0)
+        add_deposited = max(deposited - baseline_deposited_sediment, 0)
+        additional_sediment[(year, month)] = [add_suspended, add_deposited]
+    return additional_sediment
+
+#sediment exposure growth relationships for each morphology
+# used to adjust growth rate = growth rate value * (add_suspended * sedi_exp_growth_coeff)
+sedi_exp_growth_coeff = {
+    'Branching': -0.997,
+    'Foliose': -0.272, 
+    'Other': -0.533
+}         
+
+#sediment exposure partial mortality relationships for each morphology
+sedi_exp_PCM_coeff = {
+    'Branching': 0.3296,
+    'Foliose': 0.0724, 
+    'Other': 0.1645         
+}
+
+#sediment exposure settlement relationships for spawners and brooders
+sedi_exp_settlement_coeff = {
+    'spawner': -1.0609,
+    'brooder': -0.2129      
+}
+
+#sediment exposure fertilisation relationships for spawners and brooders
+sedi_exp_fertilisation_coeff = {
+    'spawner': -0.6232
+    'brooder': 1   # this is a placeholder, as brooder fertilisation is not affected by sediment exposure  
+}
