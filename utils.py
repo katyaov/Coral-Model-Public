@@ -2157,6 +2157,20 @@ def calculate_benthos_after_bleaching(change_branching_cover, change_foliose_cov
         opts.current_benthic_cover['turfing_algae'] -= w_tf
 
 #===========================================================================================
+
+
+#SEDIMENT EXPOSURE CODE TO GO HERE
+
+
+
+
+
+
+
+
+
+
+#===========================================================================================
 #Assistant functions for exporting
 
 def output_title(base: str, iteration: int, separator: str = "_", zero_pad: int = 3) -> str:
@@ -2250,3 +2264,6 @@ def fill_nans_columnwise(df, year_col: str | None = 'Year',
         created_mask[c] = orig_nan[c] & out[c].notna()
 
     return out, created_mask
+
+
+

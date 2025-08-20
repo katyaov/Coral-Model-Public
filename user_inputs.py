@@ -1,6 +1,7 @@
 ## User input values                   
 ## All units are (cm) or (%) unless otherwise is mentioned          
 #**********************************************************
+
 import pandas as pd
 
 growthOnly = False
@@ -72,7 +73,7 @@ use_custom_whole_mortality_rate = True
 use_custom_growth_rate = True
 bleaching = True
 cyclone = True
-sediment_exposure = True
+enable_sediment_exposure = True
 
 # Load the Excel file
 excel_path = 'coral_model_custom_parameters.xlsx'

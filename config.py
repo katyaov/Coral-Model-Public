@@ -22,6 +22,8 @@ if cyclone:
     for key in cyclone_years.keys():
         if key > MaxYear:
             raise ValueError(f"The cyclone year {key} is greater than the maximum allowed year {MaxYear}.")
+        
+
             
 
 linear_decay_growth_rate = True    # True for linear growth rate or False for exponential decay growth rate            
@@ -173,10 +175,9 @@ else:
                  })
     PCM_rates = WCM_rates
 
-                                                     
+ 
+                                             
 class CoralOptions:
-    upper_diameter = MaxBinId * binSize
-    growth_parameter = 0.5
     reef_area = reef_area 
     reef_shape = reef_shape
     
@@ -231,38 +232,9 @@ class CoralOptions:
     
     maximum_achievable_substrate_percentage = 100 - unavailable_substrate_percentage
     
-    
-opts = CoralOptions()
-
-if linear_decay_growth_rate:
-    rate_of_decline = np.array([1 if i==0 else 1-(i-1) * opts.gr_slope for i in range(MaxBinId)])
-
-else:
-    rate_of_decline = np.array([np.exp(-opts.gr_slope * binId) for binId in range(MaxBinId)])
-
-if use_custom_growth_rate:
-    growth_rate_branching = growth_coefficient_branching * custom_growth_rate_branching
-    growth_rate_foliose = growth_coefficient_foliose * custom_growth_rate_foliose
-    growth_rate_other = growth_coefficient_other * custom_growth_rate_other
-
-else:
-    growth_rate_branching = 2 * default_growth_rate_branching
-    growth_rate_foliose = 2 * default_growth_rate_foliose
-    growth_rate_other = 2 * default_growth_rate_other
-
-growth_rate = pd.DataFrame({'Branching': growth_rate_branching * rate_of_decline,
-                            'Foliose': growth_rate_foliose * rate_of_decline,
-                            'Other': growth_rate_other * rate_of_decline,
-                            })
-
-output_folder = 'output'
-os.makedirs(output_folder, exist_ok=True)
-
 # Sediment data processing
 
 #This bit of code it needed so outputs can be calculted for each year month combo
-from user_inputs import sediment_df
-
 sediment_years_months = {
     (int(row['Year']) - year_start, int(row['Month'])): [row['Suspended_sediment'], row['Deposited_sediment']]
     for _, row in sediment_df.iterrows()
@@ -309,6 +281,73 @@ sedi_exp_settlement_coeff = {
 
 #sediment exposure fertilisation relationships for spawners and brooders
 sedi_exp_fertilisation_coeff = {
-    'spawner': -0.6232
+    'spawner': -0.6232,
     'brooder': 1   # this is a placeholder, as brooder fertilisation is not affected by sediment exposure  
 }
+
+
+#sediment extension 
+#growth rate calculation
+
+def calculate_monthly_adjusted_growth_rate(morphology, annual_growth_rate, additional_suspended):
+    """
+    Returns the monthly growth rate for a given morphology,
+    adjusted by additional suspended sediment and the sediment exposure growth coefficient.
+    """
+    if enable_sediment_exposure:
+        coeff = sedi_exp_growth_coeff[morphology]
+        monthly_growth_rate = (annual_growth_rate / 12) * (1 + additional_suspended * coeff / 100)
+    else:
+        monthly_growth_rate = annual_growth_rate / 12
+    return monthly_growth_rate
+
+
+def calculate_annual_growth_rate(morphology, annual_growth_rate, additional_sediment_dict):
+    """
+    Sums monthly adjusted growth rates for a morphology group for each year.
+    Returns a dictionary: {year: total_annual_growth_rate}
+    """
+    annual_g_rates = {}
+    for (year, month), values in additional_sediment_dict.items():
+        add_suspended = values[0]
+        # Only apply sediment effect if enabled
+        if enable_sediment_exposure:
+            monthly_rate = calculate_monthly_adjusted_growth_rate(morphology, annual_growth_rate, add_suspended)
+        else:
+            monthly_rate = annual_growth_rate / 12
+        annual_g_rates.setdefault(year, 0)
+        annual_g_rates[year] += monthly_rate
+    return annual_g_rates
+
+
+
+##################################################################################################################
+
+opts = CoralOptions()
+
+if linear_decay_growth_rate:
+    rate_of_decline = np.array([1 if i==0 else 1-(i-1) * opts.gr_slope for i in range(MaxBinId)])
+
+else:
+    rate_of_decline = np.array([np.exp(-opts.gr_slope * binId) for binId in range(MaxBinId)])
+
+if use_custom_growth_rate:
+    growth_rate_branching = growth_coefficient_branching * custom_growth_rate_branching
+    growth_rate_foliose = growth_coefficient_foliose * custom_growth_rate_foliose
+    growth_rate_other = growth_coefficient_other * custom_growth_rate_other
+
+else:
+    growth_rate_branching = 2 * default_growth_rate_branching
+    growth_rate_foliose = 2 * default_growth_rate_foliose
+    growth_rate_other = 2 * default_growth_rate_other
+
+growth_rate = pd.DataFrame({'Branching': growth_rate_branching * rate_of_decline,
+                            'Foliose': growth_rate_foliose * rate_of_decline,
+                            'Other': growth_rate_other * rate_of_decline,
+                            })
+
+output_folder = 'output'
+os.makedirs(output_folder, exist_ok=True)
+
+
+
