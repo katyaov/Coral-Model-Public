@@ -672,8 +672,13 @@ def initialize_coral():
     opts.year = 0
     opts.dhw_lst = create_dhw_list(dhw_years)
     opts.current_dhw = opts.dhw_lst[opts.year]
+  
     opts.cyc_lst = create_cyclone_list(cyclone_years)
     opts.current_cyc = opts.cyc_lst[opts.year]
+    
+    opts.additional_sediment_data = additional_sediment_data ###############################################
+    opts.current_sedi = opts.sedi_lst[opts.year]
+        
     opts.current_coral_cover = initial_coral_cover.copy()
     opts.brooder_cover = initial_brooder_cover
     opts.spawner_cover = initial_spawner_cover
@@ -2156,6 +2161,24 @@ def calculate_benthos_after_bleaching(change_branching_cover, change_foliose_cov
         opts.current_benthic_cover['dead_coral'] -= w_dc
         opts.current_benthic_cover['turfing_algae'] -= w_tf
 
+        # Function to calculate additional sediment above baseline##################################################################################################################################
+def calculate_additional_sediment():
+    additional_sediment = {}
+    for year_offset, data in sediment_years.items():
+        month, suspended_sediment, deposited_sediment = data
+        additional_suspended = max(0, suspended_sediment - baseline_suspended_sediment)
+        additional_deposited = max(0, deposited_sediment - baseline_deposited_sediment)
+        additional_sediment[year_offset] = {
+            "Month": month,
+            "Additional_Suspended": additional_suspended,
+            "Additional_Deposited": additional_deposited
+        }
+    return additional_sediment
+
+# Calculate and store the additional sediment data
+additional_sediment_data = calculate_additional_sediment()
+
+
 #===========================================================================================
 #Assistant functions for exporting
 
@@ -2176,6 +2199,7 @@ import os, re
 from datetime import datetime
 from zoneinfo import ZoneInfo  # Python 3.9+
 
+#create ID that includes current date
 def make_run_id(folder: str, tz: str = "Australia/Brisbane", width: int = 2) -> str:
     """Return a run id like 'YYYYMMDD_01', 'YYYYMMDD_02', ..."""
     date_str = datetime.now(ZoneInfo(tz)).strftime("%Y%m%d")
@@ -2188,3 +2212,64 @@ def make_run_id(folder: str, tz: str = "Australia/Brisbane", width: int = 2) -> 
     n = (max(nums) + 1) if nums else 1
     return f"{date_str}_{n:0{width}d}"
 
+#Fill missing columns in the data by averaging nearest neighbours:
+def fill_nans_columnwise(df, year_col: str | None = 'Year',
+                         make_full_years: bool = False,
+                         fallback: str = 'mean',
+                         return_mask: bool = True):
+    """
+    Fill NaNs independently in each numeric column and (optionally) return a mask
+    of cells that were created (filled).
+    """
+    out = df.copy()
+
+    # Optionally create missing year rows
+    if year_col and year_col in out.columns and make_full_years:
+        y = pd.to_numeric(out[year_col], errors='coerce')
+        y_min, y_max = int(y.min()), int(y.max())
+        out = out.set_index(year_col).reindex(range(y_min, y_max + 1))
+        out.index.name = year_col
+        out = out.reset_index()
+
+    # Pick numeric-like columns (don’t touch year col)
+    num_cols = [c for c in out.columns if c != (year_col or '')]
+    num_cols = [c for c in num_cols
+                if pd.api.types.is_numeric_dtype(out[c]) or
+                   pd.to_numeric(out[c], errors='coerce').notna().any()]
+
+    # Track where cells were originally NaN
+    orig_nan = pd.DataFrame(False, index=out.index, columns=num_cols)
+
+    for c in num_cols:
+        s = pd.to_numeric(out[c], errors='coerce')
+        orig_nan[c] = s.isna()
+
+        # isolated single NaNs -> avg of neighbors
+        mask = s.isna()
+        prev, nxt = s.shift(1), s.shift(-1)
+        isolated = mask & prev.notna() & nxt.notna()
+        s.loc[isolated] = (prev.loc[isolated] + nxt.loc[isolated]) / 2.0
+
+        # interpolate remaining (handles long gaps + edges)
+        s = s.interpolate(method='linear', limit_direction='both')
+
+        # fallback so no NaNs remain (handles all-NaN columns)
+        if s.isna().any():
+            if fallback == 'mean' and s.notna().any():
+                s = s.fillna(s.mean())
+            elif fallback == 'ffill':
+                s = s.ffill().bfill()
+            else:  # 'zero'
+                s = s.fillna(0)
+
+        out[c] = s.astype(float)
+
+    if not return_mask:
+        return out
+
+    # created mask = was NaN before AND has a value now
+    created_mask = pd.DataFrame(False, index=out.index, columns=out.columns)
+    for c in num_cols:
+        created_mask[c] = orig_nan[c] & out[c].notna()
+
+    return out, created_mask
