@@ -12,40 +12,40 @@ no_recruitment = False
 number_of_iterations = 100 #you can choose how many times to run the model (100 times is recommended)
 
 # choose from ['protected','semiprotected','exposed']
-reef_exposure = 'protected'
+reef_exposure = "semiprotected"
 
 #-------------------------------------------------------------------------------------
 #Rugosity
-Initial_Rugosity          = 1.2
+Initial_Rugosity = 1.6
 
 #Total reef area (m2)
-reef_area                 = 10000
-reef_shape                = 11 # 1-12 based of Black et al 1990
+reef_area = 10000
+reef_shape = 5
 
 #start and end years
-year_start                = 2005
-year_end                  = 2024
+year_start = 2009
+year_end = 2037
 
 MaxYear = year_end - year_start        # Number of years we want to calculate
 
 #-------------------------------------------------------------------------------------
 # benthic cover (%)
-hard_substrate_cover = 2.4
-dead_coral_cover= 4
-CCA_cover = 0.8
-turfing_algae_cover = 36.1
-macro_algae_cover = 36.8
-rubble_cover = 4
-sediment_cover = 5
+hard_substrate_cover = 0
+dead_coral_cover = 0
+CCA_cover = 10.5
+turfing_algae_cover = 44.1
+macro_algae_cover = 9.4
+rubble_cover = 1
+sediment_cover = 6.4
 
 # initial_brooder_cover = 4.61
-initial_brooder_cover = 1
+initial_brooder_cover = 2.6
 # initial_spawner_cover = [43.8, 16.6]  # the first element is B+F and the second element is O
-initial_spawner_cover = [9.9,7]  # the first element is B+F and the second element is O
+initial_spawner_cover = [5.7, 20.3]
 
 # initial_coral_cover = {'Branching':7.38, 'Foliose':41.03, 'Other':16.6}
-initial_coral_cover = {'Branching':2.6, 'Foliose':7.3, 'Other':8}
-initial_total_coral_cover = sum(initial_coral_cover.values())
+initial_coral_cover = {'Branching': 5.7, 'Foliose': 2.6, 'Other': 20.3}
+initial_total_coral_cover = 28.6
 
 #----------------------------------------------------------------------------------------
 #Define average polyp size. Default value polyp_size = 0.2cm
@@ -70,12 +70,12 @@ other_cyclone_coefficient_input = 0.3
 # choose between using your own custom parameters and the default parameters. To use
 # your own custom parameters, set the use_custom variable to True. If using ANY own parameters, include an Excel table filled using the custom_user_input template in the working directory
 #-------------------------------------------------------------------------------------
-use_custom_coral_population_size_distribution = True
-use_custom_partial_mortality_rate = True
-use_custom_whole_mortality_rate = True
+use_custom_coral_population_size_distribution = False
+use_custom_partial_mortality_rate = False
+use_custom_whole_mortality_rate = False
 use_custom_growth_rate = True
-bleaching = False
-cyclone = False
+bleaching = True
+cyclone = True
 
 # Load the Excel file
 excel_path = 'coral_data_and_custom_parameters.xlsx'
