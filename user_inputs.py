@@ -1,5 +1,9 @@
 ## User input values                   
-## All units are (cm) or (%) unless otherwise is mentioned          
+## All units are (cm) or (%) unless otherwise is mentioned 
+
+##NAME OF THE REEF: 
+## Geographic Location: 
+##COMMENTS:
 #**********************************************************
 import pandas as pd
 
@@ -70,11 +74,11 @@ use_custom_coral_population_size_distribution = True
 use_custom_partial_mortality_rate = True
 use_custom_whole_mortality_rate = True
 use_custom_growth_rate = True
-bleaching = True
-cyclone = True
+bleaching = False
+cyclone = False
 
 # Load the Excel file
-excel_path = 'coral_model_custom_parameters.xlsx'
+excel_path = 'coral_data_and_custom_parameters.xlsx'
 
 # 1. Load real coral cover data
 real_df = pd.read_excel(excel_path, sheet_name='Real_Cover')

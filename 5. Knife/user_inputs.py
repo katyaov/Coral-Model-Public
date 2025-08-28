@@ -1,0 +1,128 @@
+## User input values                   
+## All units are (cm) or (%) unless otherwise is mentioned 
+
+##NAME OF THE REEF: 
+## Geographic Location: 
+##COMMENTS:
+#**********************************************************
+import pandas as pd
+
+growthOnly = False
+no_recruitment = False
+number_of_iterations = 100 #you can choose how many times to run the model (100 times is recommended)
+
+# choose from ['protected','semiprotected','exposed']
+reef_exposure = "semiprotected"
+
+#-------------------------------------------------------------------------------------
+#Rugosity
+Initial_Rugosity = 1.5
+
+#Total reef area (m2)
+reef_area = 10000
+reef_shape = 5
+
+#start and end years
+year_start = 2010
+year_end = 2024
+
+MaxYear = year_end - year_start        # Number of years we want to calculate
+
+#-------------------------------------------------------------------------------------
+# benthic cover (%)
+hard_substrate_cover = 1.3
+dead_coral_cover = 1.3
+CCA_cover = 16.7
+turfing_algae_cover = 41.1
+macro_algae_cover = 13.2
+rubble_cover = 1
+sediment_cover = 1
+
+# initial_brooder_cover = 4.61
+initial_brooder_cover = 4.2
+# initial_spawner_cover = [43.8, 16.6]  # the first element is B+F and the second element is O
+initial_spawner_cover = [8.5, 11.7]
+
+# initial_coral_cover = {'Branching':7.38, 'Foliose':41.03, 'Other':16.6}
+initial_coral_cover = {'Branching': 10.7, 'Foliose': 2, 'Other': 11.7}
+initial_total_coral_cover = 24.4
+
+#----------------------------------------------------------------------------------------
+#Define average polyp size. Default value polyp_size = 0.2cm
+polyp_size = 0.2
+
+#-----------------------------------------------------------------------------------------
+# Change the rates here to change the bleaching effects
+# Smaller rates give higher decrease in coral covers - so the higher the number, the more resilient (defaults: branching = 10, foliose = 20, other = 40)
+branching_bleaching_rate = 10
+foliose_bleaching_rate = 20
+other_bleaching_rate = 40
+
+#-------------------------------------------------------------------------------------------
+
+# Change the rates to change the cyclone effects. A smaller coefficient gives less cyclone impact
+# coefficients should be between 0 and 1. It should always be less than 1 (default values: branching = 0.8, foliose = 0.5, other = 0.3)
+branching_cyclone_coefficient_input = 0.8 
+foliose_cyclone_coefficient_input = 0.5
+other_cyclone_coefficient_input = 0.3
+
+#-------------------------------------------------------------------------------------
+# choose between using your own custom parameters and the default parameters. To use
+# your own custom parameters, set the use_custom variable to True. If using ANY own parameters, include an Excel table filled using the custom_user_input template in the working directory
+#-------------------------------------------------------------------------------------
+use_custom_coral_population_size_distribution = False
+use_custom_partial_mortality_rate = False
+use_custom_whole_mortality_rate = False
+use_custom_growth_rate = True
+bleaching = True
+cyclone = True
+
+# Load the Excel file
+excel_path = 'coral_data_and_custom_parameters.xlsx'
+
+# 1. Load real coral cover data
+real_df = pd.read_excel(excel_path, sheet_name='Real_Cover')
+
+# 2. Load PSD from 'Custom_PSD_T0'
+psd_df = pd.read_excel(excel_path, sheet_name='Population_size_distribution')
+custom_PSD_T0 = {
+    'Bins': psd_df['Bins'].tolist(),
+    'Branching': psd_df['Branching'].tolist(),
+    'Foliose': psd_df['Foliose'].tolist(),
+    'Other': psd_df['Other'].tolist()
+}
+
+# 3. Load Partial Mortality Rates
+pmr_df = pd.read_excel(excel_path, sheet_name='Partial_Mortality')
+custom_partial_mortality_rates_branching = pmr_df['Branching_PMR'].tolist()
+custom_partial_mortality_rates_foliose = pmr_df['Foliose_PMR'].tolist()
+custom_partial_mortality_rates_other = pmr_df['Other_PMR'].tolist()
+
+# 4. Load Whole Colony Mortality Rates
+wcm_df = pd.read_excel(excel_path, sheet_name='Whole_Mortality')
+custom_wcm_branching = wcm_df['Branching_WCM'].tolist()
+custom_wcm_foliose = wcm_df['Foliose_WCM'].tolist()
+custom_wcm_other = wcm_df['Other_WCM'].tolist()
+
+# 5. Load Growth Rates
+growth_rate_df = pd.read_excel(excel_path, sheet_name='Growth_Rates')
+growth_rate_dict = dict(zip(growth_rate_df['CoralType'], growth_rate_df['GrowthRate_cm_per_year']))
+custom_growth_rate_branching = growth_rate_dict.get('Branching')
+custom_growth_rate_foliose = growth_rate_dict.get('Foliose')
+custom_growth_rate_other = growth_rate_dict.get('Other')
+
+# 6. Load DHW Years
+dhw_df = pd.read_excel(excel_path, sheet_name='DHW_Years')
+# Convert to relative year index (0-based or 1-based if your model needs it)
+dhw_years = {int(row['Year']) - year_start: row['DHW']
+             for _, row in dhw_df.iterrows()
+             if pd.notna(row['Year']) and pd.notna(row['DHW'])}
+
+# 7. Load Cyclone Years
+cyclone_df = pd.read_excel(excel_path, sheet_name='Cyclone_Years')
+cyclone_years = {
+    int(row['Year']) - year_start: [row['Severity'], row['Distance_km']]
+    for _, row in cyclone_df.iterrows()
+    if pd.notna(row['Year']) and pd.notna(row['Severity']) and pd.notna(row['Distance_km'])
+}
+
