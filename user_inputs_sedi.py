@@ -1,14 +1,11 @@
 ## User input values                   
-## All units are (cm) or (%) unless otherwise is mentioned 
-
-##NAME OF THE REEF: 
-## Geographic Location: 
-##COMMENTS:
+## All units are (cm) or (%) unless otherwise is mentioned          
 #**********************************************************
+
 import pandas as pd
 
-growthOnly = True
-no_recruitment = True
+growthOnly = False
+no_recruitment = False
 number_of_iterations = 100 #you can choose how many times to run the model (100 times is recommended)
 
 # choose from ['protected','semiprotected','exposed']
@@ -29,7 +26,7 @@ year_end                  = 2024
 MaxYear = year_end - year_start        # Number of years we want to calculate
 
 #-------------------------------------------------------------------------------------
-# benthic cover (%)
+#Benthic cover (%)
 hard_substrate_cover = 2.4
 dead_coral_cover= 4
 CCA_cover = 0.8
@@ -50,6 +47,8 @@ initial_total_coral_cover = sum(initial_coral_cover.values())
 #----------------------------------------------------------------------------------------
 #Define average polyp size. Default value polyp_size = 0.2cm
 polyp_size = 0.2
+
+
 
 #-----------------------------------------------------------------------------------------
 # Change the rates here to change the bleaching effects
@@ -79,10 +78,10 @@ cyclone = False
 enable_sediment_exposure = True
 
 # Load the Excel file
-excel_path = 'coral_data_and_custom_parameters.xlsx'
+excel_path = 'coral_model_custom_parameters.xlsx'
 
 # 1. Load real coral cover data
-real_df = pd.read_excel(excel_path, sheet_name='Real_Cover')
+real_df = pd.read_excel(excel_path, sheet_name='Real_Cover') #only used for plotting uses actual year not relative year
 
 # 2. Load PSD from 'Custom_PSD_T0'
 psd_df = pd.read_excel(excel_path, sheet_name='Population_size_distribution')
@@ -138,4 +137,3 @@ sediment_susceptibility = 1 # value from 0 to 1 that indicates how susceptible t
 #Reproduction - these values are only required if enable_sediment_exposure is True
 spawning_month_known = True # if spawning month is known, set to True. If not, set to False
 spawning_month = 1 # if spawning month is known, set the month number (1-12). 
-
