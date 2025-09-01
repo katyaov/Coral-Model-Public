@@ -184,6 +184,7 @@ class CoralOptions:
         # Disturbance switches (read from user_inputs.py)
         self.bleaching = bool(bleaching)
         self.cyclone = bool(cyclone)
+        self.enable_sediment_exposure = bool(enable_sediment_exposure)
 
         # Reproduction & larvae
         self.brooder_cover = initial_brooder_cover
@@ -249,6 +250,50 @@ class CoralOptions:
         self.unavailable_substrate_percentage = macro_algae_cover + rubble_cover + sediment_cover
         self.unavailable_substrate_m2 = self.unavailable_substrate_percentage * self.reef_area / 100
         self.maximum_achievable_substrate_percentage = 100 - self.unavailable_substrate_percentage
+
+#sediment calculations
+
+
+
+# Calculate additional sediment exposure per month per year
+if enable_sediment_exposure:
+    additional_sediment_exposure = {
+        (year, month): (
+            suspended - baseline_suspended_sediment,
+            deposited - baseline_deposited_sediment
+        )
+        for (year, month), (suspended, deposited) in sedi_years.items()
+    }
+
+    # Initialize dictionary for yearly totals
+    add_sedi_exp_per_year = {year: (0, 0) for year in range(MaxYear + 1)}
+
+    # Aggregate monthly values into yearly totals
+    for (year, month), (suspended, deposited) in additional_sediment_exposure.items():
+        total_suspended, total_deposited = add_sedi_exp_per_year[year]
+        add_sedi_exp_per_year[year] = (
+            total_suspended + suspended,
+            total_deposited + deposited
+        )
+else:
+    add_sedi_exp_per_year = {year: (0, 0) for year in range(MaxYear + 1)}
+
+
+
+
+
+
+
+#sediment exposure partial mortality relationships for each morphology 
+sedi_exp_PCM_coeff = {
+    'Branching': 0.3296,
+    'Foliose': 0.0724, 
+    'Other': 0.1645         
+}
+
+
+
+
 
 
 # instantiate options

@@ -132,6 +132,12 @@ baseline_suspended_sediment = 5
 baseline_deposited_sediment = 10
 
 sediment_df = pd.read_excel(excel_path, sheet_name='Sediment_Exposure')
+sedi_years = {
+    ((int(row['Year']) - year_start),int(row['Month'])): [row['Suspended_sediment'], row['Deposited_sediment']]
+    for _, row in sediment_df.iterrows()
+    if pd.notna(row['Year'])  and pd.notna(row['Month']) and pd.notna(row['Suspended_sediment']) and pd.notna(row['Deposited_sediment'])
+}
+
 
 sediment_susceptibility = 1 # value from 0 to 1 that indicates how susceptible the reef is to sediment impacting its trajectory. Reefs that have a value of 0 are not susceptible to sediment, while reefs with a value of 1 are very susceptible to sediment. Default value is 1.
 
