@@ -839,12 +839,17 @@ def update_coral_parameters():
     new_other_coral_cover = opts.yearly_total_coral_cover_df.iloc[opts.year]['Other_Area (%)']
     change_other_cover = new_other_coral_cover - old_other_coral_cover
     
+	##RIO: impacts of diturbance to benthic cover is not cummulative. 
+	###The code applies only one disturbance impact per year, with the following priority:
+#Cyclone > Bleaching > Sediment > Normal change.
+#This ensures that if multiple disturbances could occur in the same year, only the highest-priority event is processed, and its effects are reflected in the benthic cover update.
     if opts.current_cyc[0] != 0:     
         calculate_benthos_after_cyclone(change_branching_cover, change_foliose_cover, change_other_cover)
         
     elif opts.current_dhw != 0:
         calculate_benthos_after_bleaching(change_branching_cover, change_foliose_cover, change_other_cover)
 	
+	#below is currently redundent as reduction in coral cover converts to dead coral anyway
     elif opts.current_add_deposited_sediment > 0:
         calculate_benthos_after_pcm_ds(change_branching_cover, change_foliose_cover, change_other_cover)
     
@@ -961,10 +966,13 @@ def count_new_population_per_bin(binId,population,growth_rate,pcm_rate,wcm_rate,
 	else:
 		
 		arr = np.array(np.linspace(lower_diameter,upper_diameter,100))
+
+		#RIO: might have to apply current growth rate here
 		arr += growth_rate * (1 - (current_total_coral_cover / opts.maximum_achievable_substrate_percentage)**opts.growth_parameter)
-		#arr *= np.sqrt(1-pcm_rate) #pcm was negative so couldnt find sqt root #Make sure all values in PCM_rates and any adjusted PCM rates (e.g., after sediment or DHW) are between 0 and 1.
-		arr *= np.sqrt(np.clip(1-pcm_rate, 0, None))
-		# arr *= np.sqrt(1-wcm_rate)
+
+		#arr *= np.sqrt(1-pcm_rate) # high values of pcm_rate can lead to negative values inside sqrt - so below I have changed the code to prevent negative numbers - this may now be redundent
+		arr *= np.sqrt(np.clip(1-pcm_rate, 0, None)) # ensure non-negative values for very high pcm_rate
+		#arr *= np.sqrt(1-wcm_rate) #RIO - why is this commented out is it commented out in Katyas code
 		
 		if binId == MaxBinId-1:
 			# since there are no upper bin, set the upper_diameter of the last bin to be the largest diameter of the coral.
@@ -1077,8 +1085,14 @@ def run_yearly_change(PSD_df, Years):
 		A dataframe containing yearly total coral cover data.
 	"""
 	
-	#generate a random growth slope for growth rate
-	opts.gr_slope = random.uniform(0.01, 0.04)
+
+	#Rio - i have removed the following line it is already defined in config and this is the only plac ein this script gr_slope occurs - I think its a mistake 
+	#opts.gr_slope = random.uniform(0.01, 0.04) #Rio: Katya: this overwrites parameter set in config.py - is this intended?
+
+
+
+
+
 	
 	opts.dhw_counter = 0
 		
@@ -1121,6 +1135,9 @@ def run_yearly_change(PSD_df, Years):
 			#	opts.dhw_counter += 1
 		else:
 			opts.current_add_deposited_sediment = 0
+		#rio gr
+		GR_ss = get_GR_after_ss(opts.current_add_suspended_sediment, gr_sedi_sus_coeff)
+
 
 		PCM_rates_dhw = get_PCM_rates_after_dhw(PCM_rates, opts.current_dhw, branching_bleaching_rate, foliose_bleaching_rate, other_bleaching_rate)
 		#PCM_rates_ds = get_PCM_rates_after_DS_exp(PCM_rates, opts.current_add_deposited_sediment, sedi_exp_PCM_coeff)
@@ -1130,6 +1147,7 @@ def run_yearly_change(PSD_df, Years):
     		opts.year,               # current year index
     		sedi_exp_PCM_coeff      # coefficients from config.py
 		)
+
 		WCM_rate_cyc = get_WCM_rates_after_cyclones(WCM_rates, opts.current_cyc[0], opts.current_cyc[1])
 
 #tried to include both decline from ds and from dhw.. didnt work 
@@ -1329,8 +1347,8 @@ def run_model_iterations_all_parameters(number_of_iterations):
 	final_results = []
 	
 	for iteration in range(number_of_iterations):
-		np.random.seed(42 + iteration)
-		random.seed(42 + iteration)
+		#np.random.seed(42 + iteration)
+		#random.seed(42 + iteration)
 		
 		coral_model_results = run_coral_model(PSD_T0, MaxYear)
 		benthic_cover_results = opts.yearly_benthic_cover_df
@@ -1769,7 +1787,7 @@ def get_PCM_rates_after_dhw(PCM_rates, dhw, branching_bleaching_rate, foliose_bl
 									)
 	return pcm_rates_dhw
 
-###Rio lets try this 
+ 
 def get_PCM_rates_after_DS_exp(PCM_rates, add_sedi_exp_per_year, year, sedi_exp_PCM_coeff):
     """
     Calculate updated Partial Colony Mortality (PCM) rates for each coral type based on deposited sediment exposure.
@@ -1804,6 +1822,38 @@ def get_PCM_rates_after_DS_exp(PCM_rates, add_sedi_exp_per_year, year, sedi_exp_
 
     return pcm_rates_ds
 
+
+def get_GR_after_ss(current_add_suspended_sediment, gr_sedi_sus_coeff):
+	"""
+	Calculate the growth rate after considering the effect of suspended sediment.
+
+	Parameters:
+	-----------
+	current_add_suspended_sediment : float
+		The current amount of added suspended sediment.
+	gr_sedi_sus_coeff : dict
+		A dictionary containing the growth rate coefficients for each coral type.
+
+	Returns:
+	--------
+	growth_rate_ss : dict
+		A dictionary containing the updated growth rates for each coral type after considering the effect of suspended sediment.
+
+	Notes:
+	------
+	This function calculates the growth rate for each coral type (Branching, Foliose, Other) after considering the effect of suspended sediment.
+	The growth rate is adjusted based on the amount of suspended sediment and the corresponding growth rate coefficient for each coral type.
+	The calculations are performed using an exponential decay function.
+
+	"""
+	
+	if not enable_sediment_exposure:
+		return growth_rate
+	
+	else:
+		growth_rate_ss = {i: growth_rate[i] * np.exp(-gr_sedi_sus_coeff[i] * current_add_suspended_sediment) for i in coral_type}
+		return growth_rate_ss
+	
 
 
 
@@ -2043,12 +2093,15 @@ def calculate_benthos_after_bleaching(change_branching_cover, change_foliose_cov
 		opts.current_benthic_cover['dead_coral'] -= w_dc
 		opts.current_benthic_cover['turfing_algae'] -= w_tf
 
-###RIO copied and adjusted from bleaching .. double check 
+##RIO: below is implimented if deposited sediment event happens but cyclones and bleaching dont happen in that year
+#impacts of these events are not culumative 
+#can test out impact of converting to changes in coral cover to different proportions of dead coral and sediment
+## could do a sensitivity analysis later to see if converting all lost coral to dead coral (as it currently is) or to a proportion of sediment is better
 
 def calculate_benthos_after_pcm_ds(change_branching_cover, change_foliose_cover, change_other_cover):
 	"""
 	This function adjusts the benthic cover values according to the changes caused by a depsoited sediment event. The 
-	changes in branching cover, foliose cover, and other cover are specified as input arguments. 
+	changes in branching cover, foliose cover, and other cover are converted to dead coral and added to the dead coral cover.
 	
 	Parameters
 	----------
@@ -2066,7 +2119,7 @@ def calculate_benthos_after_pcm_ds(change_branching_cover, change_foliose_cover,
 	"""
 	
 	if change_branching_cover < 0:
-		opts.current_benthic_cover['rubble'] += abs(change_branching_cover)
+		opts.current_benthic_cover['dead_coral'] += abs(change_branching_cover)
 		
 	else:
 		w_hs, w_dc, w_tf = split_w(opts.current_benthic_cover['hard_substrate'], opts.current_benthic_cover['dead_coral'], opts.current_benthic_cover['turfing_algae'], opts.available_substrate_percentage, change_branching_cover)
@@ -2075,9 +2128,8 @@ def calculate_benthos_after_pcm_ds(change_branching_cover, change_foliose_cover,
 		opts.current_benthic_cover['turfing_algae'] -= w_tf
 		
 	if change_foliose_cover < 0:
-		opts.current_benthic_cover['dead_coral'] += abs(change_foliose_cover)/3
-		opts.current_benthic_cover['turfing_algae'] += abs(change_foliose_cover)/3
-		opts.current_benthic_cover['macro_algae'] += abs(change_foliose_cover)/3
+		opts.current_benthic_cover['dead_coral'] += abs(change_foliose_cover)
+		
 		
 	else:
 		w_hs, w_dc, w_tf = split_w(opts.current_benthic_cover['hard_substrate'], opts.current_benthic_cover['dead_coral'], opts.current_benthic_cover['turfing_algae'], opts.available_substrate_percentage, change_foliose_cover)
@@ -2086,9 +2138,8 @@ def calculate_benthos_after_pcm_ds(change_branching_cover, change_foliose_cover,
 		opts.current_benthic_cover['turfing_algae'] -= w_tf
 		
 	if change_other_cover < 0:
-		opts.current_benthic_cover['dead_coral'] += abs(change_other_cover)/3
-		opts.current_benthic_cover['turfing_algae']  += abs(change_other_cover)/3
-		opts.current_benthic_cover['macro_algae']  += abs(change_other_cover)/3
+		opts.current_benthic_cover['dead_coral'] += abs(change_other_cover)
+		
 		
 	else:
 		w_hs, w_dc, w_tf = split_w(opts.current_benthic_cover['hard_substrate'], opts.current_benthic_cover['dead_coral'], opts.current_benthic_cover['turfing_algae'], opts.available_substrate_percentage, change_other_cover)

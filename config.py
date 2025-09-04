@@ -251,9 +251,7 @@ class CoralOptions:
         self.unavailable_substrate_m2 = self.unavailable_substrate_percentage * self.reef_area / 100
         self.maximum_achievable_substrate_percentage = 100 - self.unavailable_substrate_percentage
 
-#sediment calculations
-
-
+#Sediment calculations
 
 # Calculate additional sediment exposure per month per year
 if enable_sediment_exposure:
@@ -279,32 +277,44 @@ else:
     add_sedi_exp_per_year = {year: (0, 0) for year in range(MaxYear + 1)}
 
 
-
-
-
-
-
-#sediment exposure partial mortality relationships for each morphology 
+#Sediment exposure partial mortality relationships for each morphology 
 sedi_exp_PCM_coeff = {
     'Branching': 0.3296,
     'Foliose': 0.0724, 
     'Other': 0.1645         
 }
 
+sedi_exp_growth_coeff = {
+    'Branching': -0.997,
+    'Foliose': -0.272, 
+    'Other': -0.533
+}         
 
 
 
+#sediment exposure settlement relationships for spawners and brooders
+sedi_exp_settlement_coeff = {
+    'spawner': -1.0609,
+    'brooder': -0.2129      
+}
 
-###Rio
+#sediment exposure fertilisation relationships for spawners and brooders
+sedi_exp_fertilisation_coeff = {
+    'spawner': -0.6232,
+    'brooder': 1   # this is a placeholder, as brooder fertilisation is not affected by sediment exposure  
+}
+
+
 # instantiate options
 opts = CoralOptions()
 
-# 
+# Define rate of decline based on growth rate type
 if linear_decay_growth_rate:
     rate_of_decline = np.array([1 if i == 0 else 1 - (i - 1) * opts.gr_slope for i in range(MaxBinId)])
 else:
     rate_of_decline = np.array([np.exp(-opts.gr_slope * binId) for binId in range(MaxBinId)])
 
+# Define growth rates based on user choice
 if use_custom_growth_rate:
     growth_rate_branching = growth_coefficient_branching * custom_growth_rate_branching
     growth_rate_foliose = growth_coefficient_foliose * custom_growth_rate_foliose
@@ -314,6 +324,7 @@ else:
     growth_rate_foliose = 2 * default_growth_rate_foliose
     growth_rate_other = 2 * default_growth_rate_other
 
+#create growth rate dataframe
 growth_rate = pd.DataFrame({
     'Branching': growth_rate_branching * rate_of_decline,
     'Foliose':   growth_rate_foliose   * rate_of_decline,
