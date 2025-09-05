@@ -9,7 +9,7 @@ import pandas as pd
 
 growthOnly = False
 no_recruitment = True
-number_of_iterations = 100 #you can choose how many times to run the model (100 times is recommended)
+number_of_iterations = 10 #you can choose how many times to run the model (100 times is recommended)
 
 # choose from ['protected','semiprotected','exposed']
 reef_exposure = 'protected'
