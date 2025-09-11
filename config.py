@@ -292,7 +292,25 @@ sedi_exp_PCM_coeff = {
 }
 
 
+sedi_exp_growth_coeff = {
+    'Branching': -0.997,
+    'Foliose': -0.272, 
+    'Other': -0.533
+}         
 
+
+
+#sediment exposure settlement relationships for spawners and brooders
+sedi_exp_settlement_coeff = {
+    'spawner': -1.0609,
+    'brooder': -0.2129      
+}
+
+#sediment exposure fertilisation relationships for spawners and brooders
+sedi_exp_fertilisation_coeff = {
+    'spawner': -0.6232,
+    'brooder': 1   # this is a placeholder, as brooder fertilisation is not affected by sediment exposure  
+}
 
 
 
