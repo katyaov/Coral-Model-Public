@@ -9,7 +9,7 @@ import pandas as pd
 
 growthOnly = False
 no_recruitment = True
-number_of_iterations = 10 #you can choose how many times to run the model (100 times is recommended)
+number_of_iterations = 1 #you can choose how many times to run the model (100 times is recommended)
 
 # choose from ['protected','semiprotected','exposed']
 reef_exposure = 'protected'
@@ -24,7 +24,7 @@ reef_shape                = 11 # 1-12 based of Black et al 1990
 
 #start and end years
 year_start                = 2005
-year_end                  = 2024
+year_end                  = 2006#2024
 
 MaxYear = year_end - year_start        # Number of years we want to calculate
 
