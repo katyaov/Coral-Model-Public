@@ -202,8 +202,10 @@ class CoralOptions:
         # Growth slope
         if linear_decay_growth_rate:
             self.gr_slope = random.uniform(0.005, 0.045)
+            self.rate_of_decline = np.array([1 if i == 0 else 1 - (i - 1) * self.gr_slope for i in range(MaxBinId)])
         else:
             self.gr_slope = random.uniform(0.05, 1)
+            self.rate_of_decline = np.array([np.exp(-self.gr_slope * binId) for binId in range(MaxBinId)])
 
         # Initial benthic cover dict
         self.initial_benthic_cover_dict = {

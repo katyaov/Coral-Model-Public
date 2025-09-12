@@ -7,7 +7,7 @@
 #**********************************************************
 import pandas as pd
 
-growthOnly = True
+growthOnly = False
 no_recruitment = True
 number_of_iterations = 100 #you can choose how many times to run the model (100 times is recommended)
 
@@ -128,6 +128,7 @@ cyclone_years = {
 }
 
 # 8. Load Sediment Exposure
+# Typical clear water oligatrophic reef has suspended sediment < 5 mg/L (<15NTU) (Zweifler et al., 2024) and deposited sediment < 10 mg/cm^-2/day (Rogers 1990, Dutra et al., 2006, Falsarella et al., 2025), these can be used to inform the default baseline values.
 baseline_suspended_sediment = 5
 baseline_deposited_sediment = 10
 
