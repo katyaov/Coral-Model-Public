@@ -116,13 +116,25 @@ def get_recruited_corals(available_substrate_percentage, pop_flag = True):
 	if no_recruitment:
 		return [0, 0, 0]
 	
-	else:
 	
-		if pop_flag:
-			return [ int(recruited_branching_population), int(recruited_foliose_population), int(recruited_other_population) ]
+	
+	if pop_flag:
+		return [ int(recruited_branching_population), int(recruited_foliose_population), int(recruited_other_population) ]
 
-		else:
-			return [ recruited_branching_area_m2, recruited_foliose_area_m2, recruited_other_area_m2 ]
+	else:
+		return [ recruited_branching_area_m2, recruited_foliose_area_m2, recruited_other_area_m2 ]
+		
+#below is in the old version before katya 2nd batch of changes 11092025
+	# if no_recruitment:
+	# 	return [0, 0, 0]
+	
+	# else:
+	
+	# 	if pop_flag:
+	# 		return [ int(recruited_branching_population), int(recruited_foliose_population), int(recruited_other_population) ]
+
+	# 	else:
+	# 		return [ recruited_branching_area_m2, recruited_foliose_area_m2, recruited_other_area_m2 ]
 
 
 def get_population_number_from_surface_area(binId, surface_area):
@@ -532,68 +544,61 @@ def get_initial_surface_area(PSD):
 
 
 def estimate_initial_number_of_corals(x_i, reef_area, target_coral_cover):
-	"""
-	Estimates the initial number of corals in the entire reef area based on the given number fraction, reef area,
-	and target coral cover.
+    """
+    Estimates the initial number of corals in the entire reef area based on the given number fraction, reef area,
+    and target coral cover. Modified version that preserves randomness even after convergence
 
-	Parameters:
-	----------
-	- x_i: numpy array-like
-		Number fraction of diameters representing the distribution of corals in different bins.
-	- reef_area: float
-		Total area of the reef in square meters.
-	- target_coral_cover: float
-		Target coral cover percentage of the reef area.
+    Parameters:
+    ----------
+    - x_i: numpy array-like
+        Number fraction of diameters representing the distribution of corals in different bins.
+    - reef_area: float
+        Total area of the reef in square meters.
+    - target_coral_cover: float
+        Target coral cover percentage of the reef area.
 
-	Returns:
-	----------
-	- N: int
-		Estimated initial number of corals in the entire reef area.
-	"""
+    Returns:
+    ----------
+    - N: int
+        Estimated initial number of corals in the entire reef area.
+    """
 
-	# Generate a random initial estimate for the number of corals
-	N = np.random.randint(1, 10000)
+    # Generate a random initial estimate for the number of corals
+    N = np.random.randint(1, 10000)
 
-	# Calculate the number of corals per bin from the number fraction x_i and total number of corals N
-	n_i = x_i * N / 100
+    # Calculate the number of corals per bin from the number fraction x_i and total number of corals N
+    n_i = x_i * N / 100
 
-	# Get the bin IDs and corresponding bin diameters
-	binId = np.array(np.arange(0, MaxBinId))
-	bin_diameter = get_bin_diameter(binId) / 100
+    # Get the bin IDs and corresponding bin diameters
+    binId = np.array(np.arange(0, MaxBinId))
+    bin_diameter = get_bin_diameter(binId) / 100
 
-	# Calculate the area of a single coral in each bin
-	single_coral_area = area_parameter * np.pi * bin_diameter**2 / 4
+    # Calculate the area of a single coral in each bin
+    single_coral_area = area_parameter * np.pi * bin_diameter**2 / 4
 
-	# Calculate the area of each bin based on the number of corals
-	bin_area = n_i * single_coral_area
+    # Calculate the area of each bin based on the number of corals
+    bin_area = n_i * single_coral_area
 
-	# Estimate the coral cover from the calculated areas
-	estimate_coral_cover = 100 * np.sum(bin_area) / reef_area
+    # Estimate the coral cover from the calculated areas
+    estimate_coral_cover = 100 * np.sum(bin_area) / reef_area
 
-	# Iterate until the coral cover matches the target
-	while abs(estimate_coral_cover - target_coral_cover) > 0.001:
-		# Adjust the total number of corals based on the coral cover ratio
-		N *= target_coral_cover / estimate_coral_cover
+    # Deterministic convergence
+    while abs(estimate_coral_cover - target_coral_cover) > 0.001:
+        N *= target_coral_cover / estimate_coral_cover
+        n_i = x_i * N / 100
+        bin_area = n_i * single_coral_area
+        estimate_coral_cover = 100 * np.sum(bin_area) / reef_area
 
-		# Recalculate the number of corals per bin
-		n_i = x_i * N / 100
-
-		# Recalculate the bin diameters
-		binId = np.array(np.arange(0, MaxBinId))
-		bin_diameter = get_bin_diameter(binId) / 100
-
-		# Recalculate the area of a single coral in each bin
-		single_coral_area = area_parameter * np.pi * bin_diameter**2 / 4
-
-		# Recalculate the area of each bin based on the new number of corals
-		bin_area = n_i * single_coral_area
-
-		# Recalculate the estimated coral cover
-		estimate_coral_cover = 100 * np.sum(bin_area) / reef_area
-
-	# Round off the estimated number of corals to the nearest integer
-	return np.round(N)
-
+    # Add controlled random variation to the converged result
+    base_N = N
+    
+    # Random variation: ±2% of the base value (adjust percentage as needed)
+    variation_factor = np.random.normal(1.0, 0.02)  # 2% coefficient of variation
+    
+    # Apply variation and ensure positive result
+    final_N = max(1, base_N * variation_factor)
+    
+    return np.round(final_N)
 
 def get_initial_population(PSD):
 	"""
@@ -779,6 +784,11 @@ def initialize_coral():
 		'total_coral_cover (%)': initial_total_coral_cover}, index=[0])
 
 	opts.current_benthic_cover = opts.initial_benthic_cover_dict.copy()
+
+	# reset all tracking lists
+    # These lists accumulate data across years and must be reset for each iteration
+
+
 	opts.yearly_benthic_cover_df = pd.DataFrame({'Year': opts.year,
 		'total_benthic_cover (%)': opts.current_benthic_cover['total'],
 		'available_substrate (%)': opts.current_benthic_cover['available_substrate'],
@@ -795,9 +805,11 @@ def initialize_coral():
 	}, index=[0])
 
 	opts.current_population_df = get_initial_population(PSD_T0)
-	opts.yearly_population_df_list = [opts.current_population_df]
+	#opts.yearly_population_df_list = [opts.current_population_df]
+	opts.yearly_population_df_list = [opts.current_population_df.copy()] # Fresh list with only year 0
 	opts.current_surface_area_m2_df = get_surface_area(opts.current_population_df)
-	opts.yearly_surface_area_df_list = [opts.current_surface_area_m2_df]
+	#opts.yearly_surface_area_df_list = [opts.current_surface_area_m2_df]
+	opts.yearly_surface_area_df_list = [opts.current_surface_area_m2_df.copy()] # Fresh list with only year 0
 	opts.unavailable_substrate_percentage = opts.current_benthic_cover['macro_algae'] + opts.current_benthic_cover['rubble'] + opts.current_benthic_cover['sediment']
 	opts.available_substrate_percentage = get_available_substrate()
 	opts.maximum_achievable_substrate_percentage = 100 - opts.unavailable_substrate_percentage
@@ -1055,7 +1067,9 @@ def calculate_population_change(oldPop,growth_rate,pcm_rate,wcm_rate,available_s
 			newPoplist[i] += rmn
 			newPoplist[i+1] += grw
 			newPoplist[i+2] += grw_grw
-		
+    # Ensure no negative populations (biologically impossible)
+	newPoplist = np.maximum(newPoplist, 0)
+        
 	return newPoplist.astype(int)
 
 
@@ -1077,8 +1091,9 @@ def run_yearly_change(PSD_df, Years):
 		A dataframe containing yearly total coral cover data.
 	"""
 	
-	#generate a random growth slope for growth rate
-	opts.gr_slope = random.uniform(0.01, 0.04)
+    # Generate random growth slope for each run, with proper seeding
+    # Use numpy random instead of Python's random for better control
+	opts.gr_slope = np.random.uniform(0.01, 0.04)
 	
 	opts.dhw_counter = 0
 		
@@ -1249,6 +1264,11 @@ def run_multiple_model_iterations_total_cover(number_of_iteration, workbook_path
 
 	with pd.ExcelWriter(workbook_path, engine=engine) as writer:
 		for i in range(1, number_of_iteration + 1):
+            # set unique seeds for each iteration to ensure different random outcomes
+            # Use both numpy and standard random to cover all random number usage
+			np.random.seed(42 + i)  # Different seed for each iteration
+			random.seed(42 + i)     # Different seed for each iteration
+
 			yearly_total_coral_cover = run_coral_model(PSD_T0, MaxYear)['total_coral_cover (%)']
 			iteration_series.append(pd.Series(yearly_total_coral_cover.values, name=f'iteration_{i}'))
 
@@ -1837,7 +1857,10 @@ def get_WCM_rates_after_cyclones(WCM_rates, cyclone_severity_level, distance_to_
 	
 	else:
 		cyclone_severity_level = cyclone_severity_level*2
-		pp = np.linspace(1,MaxBinId+1,20)
+
+
+		# Fix: Create arrays that match MaxBinId exactly
+		pp = np.linspace(1, MaxBinId+1, MaxBinId)  # Ensures length = MaxBinId
 		bins = np.array([p*cyclone_bin_coefficient for p in pp])
 		
 		exp_term_branching = cyclone_severity_level*np.exp(-distance_to_cyclone/bins/cyclone_bin_coefficient)
@@ -1845,13 +1868,18 @@ def get_WCM_rates_after_cyclones(WCM_rates, cyclone_severity_level, distance_to_
 		exp_term_other = cyclone_severity_level*np.exp(-distance_to_cyclone/bins/cyclone_bin_coefficient)
 
 
-		wcm_rates_cyc = pd.DataFrame(
-										{
-											'Branching': [1 - 1 / (1 + branching_cyclone_coefficient * exp_term_branching[j]) + WCM_rates['Branching'][j] for j in range(MaxBinId)],
-											'Foliose': [1 - 1 / (1 + foliose_cyclone_coefficient * exp_term_foliose[j]) + WCM_rates['Foliose'][j] for j in range(MaxBinId)],
-											'Other': [1 - 1 / (1 + other_cyclone_coefficient * exp_term_other[j]) + WCM_rates['Other'][j] for j in range(MaxBinId)],
-										}
-										)
+		# wcm_rates_cyc = pd.DataFrame(
+		# 								{
+		# 									'Branching': [1 - 1 / (1 + branching_cyclone_coefficient * exp_term_branching[j]) + WCM_rates['Branching'][j] for j in range(MaxBinId)],
+		# 									'Foliose': [1 - 1 / (1 + foliose_cyclone_coefficient * exp_term_foliose[j]) + WCM_rates['Foliose'][j] for j in range(MaxBinId)],
+		# 									'Other': [1 - 1 / (1 + other_cyclone_coefficient * exp_term_other[j]) + WCM_rates['Other'][j] for j in range(MaxBinId)],
+		# 								}
+		# 								)
+		wcm_rates_cyc = pd.DataFrame({
+            'Branching': [1 - 1 / (1 + branching_cyclone_coefficient * exp_term_branching[j]) + WCM_rates['Branching'][j] for j in range(MaxBinId)],
+            'Foliose': [1 - 1 / (1 + foliose_cyclone_coefficient * exp_term_foliose[j]) + WCM_rates['Foliose'][j] for j in range(MaxBinId)],
+            'Other': [1 - 1 / (1 + other_cyclone_coefficient * exp_term_other[j]) + WCM_rates['Other'][j] for j in range(MaxBinId)],
+        })
 		
 		return wcm_rates_cyc
 
