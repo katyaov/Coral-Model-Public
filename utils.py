@@ -25,10 +25,20 @@ if not hasattr(opts, "cyclone"):
 def get_recruited_corals(available_substrate_percentage, pop_flag = True):
     '''
     Calculates the estimated area or population of different coral species that will recruit to a given area of substrate.
+
+    Parameters
+    ----------
+    available_substrate_percentage : float
+        The percentage of substrate available for colonization by coral recruits.
+    pop_flag : bool, optional
+        A flag to specify the return type of the function. If True, the function returns the population of the recruited coral species. If False, the function returns the estimated area of recruitment. Default is True.
+
+    Returns
+    -------
+    list
+        A list containing the estimated area or population of different coral species, depending on whether the pop_flag argument is True or False.
+
     '''
-    
-    if no_recruitment:
-        return [0, 0, 0]
     
     # Calculate the available substrate area for brooders    
     brooder_cover_m2 = opts.brooder_cover*colonies_spawning_decline_rate(opts.current_dhw)*opts.reef_area/100
@@ -99,10 +109,16 @@ def get_recruited_corals(available_substrate_percentage, pop_flag = True):
     total_recruitment_m2 = surfaceArea_brooder_m2 + sum(surfaceArea_spawner_m2)
     total_recruitment_perc = surfaceArea_brooder_percentage + sum(surfaceArea_spawner_percentage)
     
-    if pop_flag:
-        return [ int(recruited_branching_population), int(recruited_foliose_population), int(recruited_other_population) ]
+    if no_recruitment:
+        return [0, 0, 0]
+    
     else:
-        return [ recruited_branching_area_m2, recruited_foliose_area_m2, recruited_other_area_m2 ]
+    
+        if pop_flag:
+            return [ int(recruited_branching_population), int(recruited_foliose_population), int(recruited_other_population) ]
+
+        else:
+            return [ recruited_branching_area_m2, recruited_foliose_area_m2, recruited_other_area_m2 ]
 
 
 def get_population_number_from_surface_area(binId, surface_area):
@@ -514,7 +530,7 @@ def get_initial_surface_area(PSD):
 def estimate_initial_number_of_corals(x_i, reef_area, target_coral_cover):
     """
     Estimates the initial number of corals in the entire reef area based on the given number fraction, reef area,
-    and target coral cover. Modified version that preserves randomness even after convergence
+    and target coral cover.
 
     Parameters:
     ----------
@@ -550,23 +566,29 @@ def estimate_initial_number_of_corals(x_i, reef_area, target_coral_cover):
     # Estimate the coral cover from the calculated areas
     estimate_coral_cover = 100 * np.sum(bin_area) / reef_area
 
-    # Deterministic convergence
+    # Iterate until the coral cover matches the target
     while abs(estimate_coral_cover - target_coral_cover) > 0.001:
+        # Adjust the total number of corals based on the coral cover ratio
         N *= target_coral_cover / estimate_coral_cover
+
+        # Recalculate the number of corals per bin
         n_i = x_i * N / 100
+
+        # Recalculate the bin diameters
+        binId = np.array(np.arange(0, MaxBinId))
+        bin_diameter = get_bin_diameter(binId) / 100
+
+        # Recalculate the area of a single coral in each bin
+        single_coral_area = area_parameter * np.pi * bin_diameter**2 / 4
+
+        # Recalculate the area of each bin based on the new number of corals
         bin_area = n_i * single_coral_area
+
+        # Recalculate the estimated coral cover
         estimate_coral_cover = 100 * np.sum(bin_area) / reef_area
 
-    # Add controlled random variation to the converged result
-    base_N = N
-    
-    # Random variation: ±2% of the base value (adjust percentage as needed)
-    variation_factor = np.random.normal(1.0, 0.02)  # 2% coefficient of variation
-    
-    # Apply variation and ensure positive result
-    final_N = max(1, base_N * variation_factor)
-    
-    return np.round(final_N)
+    # Round off the estimated number of corals to the nearest integer
+    return np.round(N)
 
 
 def get_initial_population(PSD):
@@ -691,51 +713,50 @@ def get_surface_area(population_df):
 
        
 def initialize_coral():
-    """
-    Initialize the coral ecosystem at year = 0.
-    """
-    # Ensure attributes exist with defaults
-    if not hasattr(opts, "bleaching"):
-        opts.bleaching = True
-    if not hasattr(opts, "cyclone"):
-        opts.cyclone = True
-    
-    opts.year = 0
-    
-    # --- DHW handling ---
-    if opts.bleaching:
-        opts.dhw_lst = create_dhw_list(dhw_years)
-        opts.current_dhw = opts.dhw_lst[opts.year]
-        opts.dhw_counter = 0
-    else:
-        opts.dhw_lst = None
-        opts.current_dhw = 0
-        opts.dhw_counter = 0
-    
-    # --- Cyclone handling ---
-    if opts.cyclone:
-        opts.cyc_lst = create_cyclone_list(cyclone_years)
-        opts.current_cyc = opts.cyc_lst[opts.year]
-    else:
-        opts.cyc_lst = None
-        opts.current_cyc = [0, 0]
-    
-    # deep copy initial values to prevent reference sharing between iterations
-    opts.current_coral_cover = initial_coral_cover.copy()
-    opts.brooder_cover = initial_brooder_cover
-    opts.spawner_cover = initial_spawner_cover.copy()  # Make sure this is a list copy
-    opts.current_total_coral_cover = initial_total_coral_cover
-    
-    # reset all tracking lists
-    # These lists accumulate data across years and must be reset for each iteration
-    opts.yearly_total_coral_cover_df = pd.DataFrame({'Year':0, 
+   """
+   Initialize the coral ecosystem at year = 0.
+   Returns
+   -------
+   None.
+   """
+   # Ensure attributes exist with defaults
+   if not hasattr(opts, "bleaching"):
+       opts.bleaching = True
+   if not hasattr(opts, "cyclone"):
+       opts.cyclone = True
+   
+   opts.year = 0
+   
+   # --- Bleaching handling ---
+   if opts.bleaching:
+       opts.dhw_lst = create_dhw_list(dhw_years)
+       opts.current_dhw = opts.dhw_lst[opts.year]
+       opts.dhw_counter = 0
+   else:
+       opts.dhw_lst = None
+       opts.current_dhw = 0
+       opts.dhw_counter = 0
+   
+   # --- Cyclone handling ---
+   if opts.cyclone:
+       opts.cyc_lst = create_cyclone_list(cyclone_years)
+       opts.current_cyc = opts.cyc_lst[opts.year]
+   else:
+       opts.cyc_lst = None
+       opts.current_cyc = [0, 0]
+   
+   opts.current_coral_cover = initial_coral_cover.copy()
+   opts.brooder_cover = initial_brooder_cover
+   opts.spawner_cover = initial_spawner_cover
+   opts.current_total_coral_cover = initial_total_coral_cover
+   opts.yearly_total_coral_cover_df = pd.DataFrame({'Year':0, 
                                                'Branching_Area (%)':initial_coral_cover['Branching'], 
                                                'Foliose_Area (%)':initial_coral_cover['Foliose'], 
                                                'Other_Area (%)':initial_coral_cover['Other'], 
                                                'total_coral_cover (%)':initial_total_coral_cover}, index=[0])
-    
-    opts.current_benthic_cover = opts.initial_benthic_cover_dict.copy()
-    opts.yearly_benthic_cover_df = pd.DataFrame({'Year':opts.year, 
+   
+   opts.current_benthic_cover = opts.initial_benthic_cover_dict.copy()
+   opts.yearly_benthic_cover_df = pd.DataFrame({'Year':opts.year, 
                                          'total_benthic_cover (%)':opts.current_benthic_cover['total'], 
                                          'available_substrate (%)':opts.current_benthic_cover['available_substrate'], 
                                          'hard_substrate (%)':opts.current_benthic_cover['hard_substrate'], 
@@ -749,19 +770,16 @@ def initialize_coral():
                                          'unavailable_sub':opts.unavailable_substrate_percentage,
                                          'tot':opts.available_substrate_percentage + opts.unavailable_substrate_percentage + opts.current_total_coral_cover, 
                                         }, index=[0])
-    
-    opts.current_population_df = get_initial_population(PSD_T0)
-    
-    # Reset the yearly tracking lists 
-    opts.yearly_population_df_list = [opts.current_population_df.copy()]  # Fresh list with only year 0
-    
-    opts.current_surface_area_m2_df = get_surface_area(opts.current_population_df)
-    opts.yearly_surface_area_df_list = [opts.current_surface_area_m2_df.copy()]  # Fresh list with only year 0
-    
-    opts.unavailable_substrate_percentage = opts.current_benthic_cover['macro_algae'] + opts.current_benthic_cover['rubble'] + opts.current_benthic_cover['sediment']
-    opts.available_substrate_percentage = get_available_substrate()
-    opts.maximum_achievable_substrate_percentage = 100 - opts.unavailable_substrate_percentage
-    opts.upper_diameter = MaxBinId * binSize
+   
+   opts.current_population_df = get_initial_population(PSD_T0)
+   opts.yearly_population_df_list = [opts.current_population_df]
+   opts.current_surface_area_m2_df = get_surface_area(opts.current_population_df)
+   opts.yearly_surface_area_df_list = [opts.current_surface_area_m2_df]
+   opts.unavailable_substrate_percentage = opts.current_benthic_cover['macro_algae'] + opts.current_benthic_cover['rubble'] + opts.current_benthic_cover['sediment']
+   opts.available_substrate_percentage = get_available_substrate()
+   opts.maximum_achievable_substrate_percentage = 100 - opts.unavailable_substrate_percentage
+   opts.upper_diameter = MaxBinId * binSize
+        
 
 
 def update_coral_parameters():
@@ -1023,11 +1041,21 @@ def calculate_population_change(oldPop,growth_rate,pcm_rate,wcm_rate,available_s
 def run_yearly_change(PSD_df, Years):
     """
     Runs yearly coral population growth based on the given parameters.
-    """
-    
-    # Generate random growth slope for each run, with proper seeding
-    # Use numpy random instead of Python's random for better control
-    opts.gr_slope = np.random.uniform(0.01, 0.04)
+
+    Parameters
+    ----------
+    PSD_df : pandas.DataFrame
+        A dataframe containing initial surface area data.
+    Years : int
+        The number of years to run the simulation.
+
+    Returns
+    -------
+    pandas.DataFrame
+        A dataframe containing yearly total coral cover data.
+    """    
+    #generate a random growth slope for growth rate
+    opts.gr_slope = random.uniform(0.01, 0.04)
     
     opts.dhw_counter = 0
         
@@ -1058,7 +1086,6 @@ def run_yearly_change(PSD_df, Years):
         new_branching_pop = calculate_population_change(opts.current_population_df['Branching'], growth_rate['Branching'],PCM_rates_dhw['Branching'],WCM_rate_cyc['Branching'],opts.current_total_coral_cover,'Branching')
         new_foliose_pop = calculate_population_change(opts.current_population_df['Foliose'], growth_rate['Foliose'],PCM_rates_dhw['Foliose'],WCM_rate_cyc['Foliose'],opts.current_total_coral_cover,'Foliose')
         new_other_pop = calculate_population_change(opts.current_population_df['Other'], growth_rate['Other'],PCM_rates_dhw['Other'],WCM_rate_cyc['Other'],opts.current_total_coral_cover,'Other')
-        
         opts.current_population_df = pd.DataFrame({ 'Branching': np.array([pop for pop in new_branching_pop]), 
                                                     'Foliose': np.array([pop for pop in new_foliose_pop]), 
                                                     'Other': np.array([pop for pop in new_other_pop])})
@@ -1144,11 +1171,6 @@ def run_multiple_model_iterations_total_cover(number_of_iteration, workbook_path
 
     with pd.ExcelWriter(workbook_path, engine=engine) as writer:
         for i in range(1, number_of_iteration + 1):
-            # set unique seeds for each iteration to ensure different random outcomes
-            # Use both numpy and standard random to cover all random number usage
-            np.random.seed(42 + i)  # Different seed for each iteration
-            random.seed(42 + i)     # Different seed for each iteration
-            
             yearly_total_coral_cover = run_coral_model(PSD_T0, MaxYear)['total_coral_cover (%)']
             iteration_series.append(pd.Series(yearly_total_coral_cover.values, name=f'iteration_{i}'))
 
@@ -1193,7 +1215,7 @@ def plot_growth_rate_iterations(total_cover_df):
     plt.rcParams['xtick.labelsize'] = label_size
     plt.rcParams['ytick.labelsize'] = label_size
 
-    # 1) Build x as ACTUAL years
+    # 1) Build x as actual years
     yrs = total_cover_df['year'].to_numpy()
     # If 'year' already holds real years, this keeps them; if it's indices, add year_start
     x = (yrs + year_start) if yrs.min() < 1000 else yrs
@@ -1221,6 +1243,7 @@ def plot_growth_rate_iterations(total_cover_df):
     plt.savefig(plot_file, format='svg')
     plt.show()    
 
+
 # Function to run the model multiple iterations and collect the results 
 def run_model_iterations_all_parameters(number_of_iterations):
     population_results = []
@@ -1228,10 +1251,7 @@ def run_model_iterations_all_parameters(number_of_iterations):
     area_results = []
     final_results = []
     
-    for iteration in range(number_of_iterations):
-        np.random.seed(42 + iteration)
-        random.seed(42 + iteration)
-        
+    for _ in range(100):
         coral_model_results = run_coral_model(PSD_T0, MaxYear)
         benthic_cover_results = opts.yearly_benthic_cover_df
         rugosity_results = get_rugosity_list()
@@ -1266,7 +1286,6 @@ def run_model_iterations_all_parameters(number_of_iterations):
     final_df = pd.concat(final_results)
     
     return final_df, population_results, percentage_population_results, area_results
-
 
 def get_relative_increase_coral_cover(old_coral_cover, new_coral_cover):
     """
@@ -1676,22 +1695,24 @@ def get_WCM_rates_after_cyclones(WCM_rates, cyclone_severity_level, distance_to_
     
     else:
         cyclone_severity_level = cyclone_severity_level*2
-        
-        # Fix: Create arrays that match MaxBinId exactly
-        pp = np.linspace(1, MaxBinId+1, MaxBinId)  # Ensures length = MaxBinId
+        pp = np.linspace(1,MaxBinId+1,20)
         bins = np.array([p*cyclone_bin_coefficient for p in pp])
         
         exp_term_branching = cyclone_severity_level*np.exp(-distance_to_cyclone/bins/cyclone_bin_coefficient)
         exp_term_foliose = cyclone_severity_level*np.exp(-distance_to_cyclone/bins/cyclone_bin_coefficient)
         exp_term_other = cyclone_severity_level*np.exp(-distance_to_cyclone/bins/cyclone_bin_coefficient)
 
-        wcm_rates_cyc = pd.DataFrame({
-            'Branching': [1 - 1 / (1 + branching_cyclone_coefficient * exp_term_branching[j]) + WCM_rates['Branching'][j] for j in range(MaxBinId)],
-            'Foliose': [1 - 1 / (1 + foliose_cyclone_coefficient * exp_term_foliose[j]) + WCM_rates['Foliose'][j] for j in range(MaxBinId)],
-            'Other': [1 - 1 / (1 + other_cyclone_coefficient * exp_term_other[j]) + WCM_rates['Other'][j] for j in range(MaxBinId)],
-        })
+
+        wcm_rates_cyc = pd.DataFrame(
+                                        {
+                                            'Branching': [1 - 1 / (1 + branching_cyclone_coefficient * exp_term_branching[j]) + WCM_rates['Branching'][j] for j in range(MaxBinId)],
+                                            'Foliose': [1 - 1 / (1 + foliose_cyclone_coefficient * exp_term_foliose[j]) + WCM_rates['Foliose'][j] for j in range(MaxBinId)],
+                                            'Other': [1 - 1 / (1 + other_cyclone_coefficient * exp_term_other[j]) + WCM_rates['Other'][j] for j in range(MaxBinId)],
+                                        }
+                                        )
         
         return wcm_rates_cyc
+
 
 
 def split_w(x, y, z, t, w):
