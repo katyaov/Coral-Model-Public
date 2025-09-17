@@ -3,8 +3,7 @@ import random
 import pandas as pd
 import numpy as np
 import warnings
-from user_inputs import *
-
+from user_inputs_old import *
 # warnings.filterwarnings("ignore", category=RuntimeWarning, message="overflow encountered in double_scalars")
 # warnings.resetwarnings()
 # warnings.filterwarnings(action='ignore', category=UserWarning, module='openpyxl')
@@ -31,12 +30,7 @@ default_growth_rate_branching      = 5.4
 default_growth_rate_foliose         = 2.1
 default_growth_rate_other          = 0.8
 
-#growth rate coefficients - fixed at 2 for all morphologies for the time being
-growth_coefficient_branching = 2
-growth_coefficient_foliose = 2
-growth_coefficient_other = 2
-
-#slopes for calculating new RI as RI_n DTCC*slope + RI
+#slopes for calculationg new RI as RI_n= DTCC*slope + RI
 slope_max = 0.0487
 slope_min = 0.019
 slope_av = 0.0340
@@ -44,7 +38,6 @@ slope_av = 0.0340
 #egg density (Eggs/cm3)
 egg_density_spawner_branching_foliose = 375
 egg_density_spawner_other = 600
-
  #THIS CODE NEEDS CLEANING
 daily8_retention_rates_G1 = 0.95 * 0.9 * 0.8 * 0.8 * 0.7 #* 0.8 * 0.75 *  0.65  # very high NEED TO REMOVE
 daily4_retention_rates_G1 = 0.95 * 0.9 * 0.8 * 0.8  * 0.7 # very high NEED TO REMOVE
@@ -57,6 +50,7 @@ daily4_retention_rates_G3 = 0.95 * 0.8 * 0.5 * 0.3 * 0.1 # medium
  
 daily8_retention_rates_G4 = 0.825 * 0.35 * 0.1 * 0.04 * 0.02 #* 0.01 * 0.005 * 0.001 #  low
 daily4_retention_rates_G4 = 0.825 * 0.35 * 0.1 * 0.04 * 0.02 #  low
+
 
 retention_rates_8d = [daily8_retention_rates_G1, daily8_retention_rates_G2, daily8_retention_rates_G3, daily8_retention_rates_G4]
 retention_rates_4d = [daily4_retention_rates_G1, daily4_retention_rates_G2, daily4_retention_rates_G3, daily4_retention_rates_G4]
@@ -127,6 +121,11 @@ if bleaching:
 else:
     dhw_years = {0:0}
 
+# Change the rates here to change the bleaching effects
+# Smaller rates gives higher decrease in coral covers - so higher the number, the more resilient
+branching_bleaching_rate = 10
+foliose_bleaching_rate = 20
+other_bleaching_rate = 40
 
 eggs_decline_coefficient = 34
 colonies_spawning_decline_coefficient = 25
@@ -135,6 +134,7 @@ if cyclone:
     cyclone_years = cyclone_years
 else:
     cyclone_years = {0:[0,0]}
+    
     
 cyclone_bin_coefficient = 5
 
@@ -147,9 +147,11 @@ elif reef_exposure == 'exposed' or reef_exposure == 'Exposed':
 else:
     raise ValueError("reef type must be one of the following ['protected','semiprotected','exposed'].")
 
-branching_cyclone_coefficient = branching_cyclone_coefficient_input * reef_type_coefficient
-foliose_cyclone_coefficient = foliose_cyclone_coefficient_input * reef_type_coefficient
-other_cyclone_coefficient = other_cyclone_coefficient_input * reef_type_coefficient
+# Change the rates to change the cyclone effects. Smaller coefficient gives less cyclone impacts
+# coefficients should be between 0 and 1. It should always be less than 1
+branching_cyclone_coefficient = 0.8 * reef_type_coefficient
+foliose_cyclone_coefficient = 0.5 * reef_type_coefficient
+other_cyclone_coefficient = 0.3 * reef_type_coefficient
 
 if not growthOnly:
     WCM_rates = pd.DataFrame({
@@ -174,89 +176,68 @@ else:
 
                                                      
 class CoralOptions:
-    def __init__(self):
-        # Core reef geometry / globals
-        self.upper_diameter = MaxBinId * binSize
-        self.growth_parameter = 0.5
-        self.reef_area = reef_area
-        self.reef_shape = reef_shape
-
-        # Disturbance switches (read from user_inputs.py)
-        self.bleaching = bool(bleaching)
-        self.cyclone = bool(cyclone)
-
-        # Reproduction & larvae
-        self.brooder_cover = initial_brooder_cover
-        self.spawner_cover = initial_spawner_cover
-        self.eggs_density = [
-            egg_density_spawner_branching_foliose,
-            egg_density_spawner_other
-        ]
-        self.eggs_spawning_rate = [
-            random.uniform(0.63, 0.82),
-            random.uniform(0.55, 0.67)
-        ]
-        self.eggs_fertilisation_rate = random.uniform(0.41, 0.69)
-
-        # Growth slope
-        if linear_decay_growth_rate:
-            self.gr_slope = random.uniform(0.005, 0.045)
-        else:
-            self.gr_slope = random.uniform(0.05, 1)
-
-        # Initial benthic cover dict
-        self.initial_benthic_cover_dict = {
-            "total": (
-                hard_substrate_cover
-                + dead_coral_cover
-                + CCA_cover
-                + turfing_algae_cover
-                + macro_algae_cover
-                + rubble_cover
-                + sediment_cover
-            ),
-            "available_substrate": (
-                hard_substrate_cover
-                + turfing_algae_cover
-                + CCA_cover
-                + dead_coral_cover
-            ),
-            "hard_substrate": hard_substrate_cover,
-            "dead_coral": dead_coral_cover,
-            "CCA": CCA_cover,
-            "turfing_algae": turfing_algae_cover,
-            "macro_algae": macro_algae_cover,
-            "rubble": rubble_cover,
-            "sediment": sediment_cover,
-        }
-
-        # Current state 
-        self.current_coral_cover = initial_coral_cover.copy()
-        self.current_total_coral_cover = initial_total_coral_cover
-        self.yearly_population_df_list = []
-        self.yearly_surface_area_df_list = []
-
-        # Substrate / area 
-        self.current_total_coral_area_m2 = initial_total_coral_cover * self.reef_area / 100
-        self.current_branching_total_area_m2 = initial_coral_cover['Branching'] * self.reef_area / 100
-        self.current_foliose_total_area_m2 = initial_coral_cover['Foliose'] * self.reef_area / 100
-        self.current_other_total_area_m2 = initial_coral_cover['Other'] * self.reef_area / 100
-
-        self.available_substrate_percentage = self.initial_benthic_cover_dict['available_substrate']
-        self.available_substrate_m2 = self.available_substrate_percentage * self.reef_area / 100
-
-        # Unavailable substrate is macro + rubble + sediment (as in your code)
-        self.unavailable_substrate_percentage = macro_algae_cover + rubble_cover + sediment_cover
-        self.unavailable_substrate_m2 = self.unavailable_substrate_percentage * self.reef_area / 100
-        self.maximum_achievable_substrate_percentage = 100 - self.unavailable_substrate_percentage
-
-
-# instantiate options
+    upper_diameter = MaxBinId * binSize
+    growth_parameter = 0.5
+    reef_area = reef_area 
+    reef_shape = reef_shape
+    
+    # initial_spawner_cover = [43.8, 16.6]  # the first element is B+F and the second element is O
+    brooder_cover = initial_brooder_cover
+    spawner_cover = initial_spawner_cover
+    eggs_density = [egg_density_spawner_branching_foliose, egg_density_spawner_other]
+    eggs_spawning_rate = [random.uniform(0.63,0.82), random.uniform(0.55,0.67)]
+    eggs_fertilisation_rate = random.uniform(0.41,0.69)
+        
+    if linear_decay_growth_rate:
+        gr_slope = random.uniform(0.005, 0.045)
+    else:
+        gr_slope = random.uniform(0.05,1)
+    
+    initial_benthic_cover_dict = {
+                        "total": hard_substrate_cover \
+                                + dead_coral_cover \
+                                + CCA_cover  \
+                                + turfing_algae_cover \
+                                + macro_algae_cover \
+                                + rubble_cover \
+                                + sediment_cover,
+                        "available_substrate" : hard_substrate_cover \
+                                                + turfing_algae_cover \
+                                                + CCA_cover \
+                                                + dead_coral_cover,
+                        "hard_substrate" : hard_substrate_cover,
+                        "dead_coral" : dead_coral_cover,
+                        "CCA" : CCA_cover,
+                        "turfing_algae" : turfing_algae_cover,
+                        "macro_algae" : macro_algae_cover,
+                        "rubble" : rubble_cover,
+                        "sediment" : sediment_cover
+                    }
+    
+    current_coral_cover = initial_coral_cover.copy()
+    current_total_coral_cover = initial_total_coral_cover
+    yearly_population_df_list = []
+    yearly_surface_area_df_list = []
+    
+    current_total_coral_area_m2 = initial_total_coral_cover * reef_area / 100
+    current_branching_total_area_m2 = initial_coral_cover['Branching'] * reef_area / 100
+    current_foliose_total_area_m2 = initial_coral_cover['Foliose'] * reef_area / 100
+    current_other_total_area_m2 = initial_coral_cover['Other'] * reef_area / 100
+    
+    available_substrate_percentage = initial_benthic_cover_dict['available_substrate']
+    available_substrate_m2 = available_substrate_percentage * reef_area / 100
+    # unavailable_substrate_percentage = 100 - initial_total_coral_cover - available_substrate_percentage
+    unavailable_substrate_percentage = macro_algae_cover + rubble_cover + sediment_cover
+    unavailable_substrate_m2 = unavailable_substrate_percentage*reef_area/100
+    
+    maximum_achievable_substrate_percentage = 100 - unavailable_substrate_percentage
+    
+    
 opts = CoralOptions()
 
-# 
 if linear_decay_growth_rate:
-    rate_of_decline = np.array([1 if i == 0 else 1 - (i - 1) * opts.gr_slope for i in range(MaxBinId)])
+    rate_of_decline = np.array([1 if i==0 else 1-(i-1) * opts.gr_slope for i in range(MaxBinId)])
+
 else:
     rate_of_decline = np.array([np.exp(-opts.gr_slope * binId) for binId in range(MaxBinId)])
 
@@ -264,16 +245,18 @@ if use_custom_growth_rate:
     growth_rate_branching = growth_coefficient_branching * custom_growth_rate_branching
     growth_rate_foliose = growth_coefficient_foliose * custom_growth_rate_foliose
     growth_rate_other = growth_coefficient_other * custom_growth_rate_other
+
 else:
     growth_rate_branching = 2 * default_growth_rate_branching
     growth_rate_foliose = 2 * default_growth_rate_foliose
     growth_rate_other = 2 * default_growth_rate_other
 
-growth_rate = pd.DataFrame({
-    'Branching': growth_rate_branching * rate_of_decline,
-    'Foliose':   growth_rate_foliose   * rate_of_decline,
-    'Other':     growth_rate_other     * rate_of_decline,
-})
+growth_rate = pd.DataFrame({'Branching': growth_rate_branching * rate_of_decline,
+                            'Foliose': growth_rate_foliose * rate_of_decline,
+                            'Other': growth_rate_other * rate_of_decline,
+                            })
 
 output_folder = 'output'
-os.makedirs(output_folder, exist_ok=True)
+if not os.path.exists(output_folder):
+    os.makedirs(output_folder)
+

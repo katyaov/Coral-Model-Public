@@ -727,7 +727,7 @@ def initialize_coral():
    
    opts.year = 0
    
-   # --- Bleaching handling ---
+   # --- DHW handling ---
    if opts.bleaching:
        opts.dhw_lst = create_dhw_list(dhw_years)
        opts.current_dhw = opts.dhw_lst[opts.year]
@@ -1030,9 +1030,6 @@ def calculate_population_change(oldPop,growth_rate,pcm_rate,wcm_rate,available_s
             newPoplist[i] += rmn
             newPoplist[i+1] += grw
             newPoplist[i+2] += grw_grw
-
-    # Ensure no negative populations (biologically impossible)
-    newPoplist = np.maximum(newPoplist, 0)
         
     return newPoplist.astype(int)
 
@@ -1053,7 +1050,8 @@ def run_yearly_change(PSD_df, Years):
     -------
     pandas.DataFrame
         A dataframe containing yearly total coral cover data.
-    """    
+    """
+    
     #generate a random growth slope for growth rate
     opts.gr_slope = random.uniform(0.01, 0.04)
     
@@ -1215,7 +1213,7 @@ def plot_growth_rate_iterations(total_cover_df):
     plt.rcParams['xtick.labelsize'] = label_size
     plt.rcParams['ytick.labelsize'] = label_size
 
-    # 1) Build x as actual years
+    # 1) Build x as ACTUAL years
     yrs = total_cover_df['year'].to_numpy()
     # If 'year' already holds real years, this keeps them; if it's indices, add year_start
     x = (yrs + year_start) if yrs.min() < 1000 else yrs
@@ -1243,7 +1241,6 @@ def plot_growth_rate_iterations(total_cover_df):
     plt.savefig(plot_file, format='svg')
     plt.show()    
 
-
 # Function to run the model multiple iterations and collect the results 
 def run_model_iterations_all_parameters(number_of_iterations):
     population_results = []
@@ -1251,7 +1248,10 @@ def run_model_iterations_all_parameters(number_of_iterations):
     area_results = []
     final_results = []
     
-    for _ in range(100):
+    for iteration in range(number_of_iterations):
+        np.random.seed(42 + iteration)
+        random.seed(42 + iteration)
+        
         coral_model_results = run_coral_model(PSD_T0, MaxYear)
         benthic_cover_results = opts.yearly_benthic_cover_df
         rugosity_results = get_rugosity_list()
@@ -1286,6 +1286,7 @@ def run_model_iterations_all_parameters(number_of_iterations):
     final_df = pd.concat(final_results)
     
     return final_df, population_results, percentage_population_results, area_results
+
 
 def get_relative_increase_coral_cover(old_coral_cover, new_coral_cover):
     """
