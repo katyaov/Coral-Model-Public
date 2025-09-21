@@ -277,3 +277,27 @@ growth_rate = pd.DataFrame({
 
 output_folder = 'output'
 os.makedirs(output_folder, exist_ok=True)
+
+#####Old function to check the results#####
+# Function to plot population, percentage population, and area for specific years with standard deviation shades
+def plot_graphs_with_std_shades(df, y_label, y_unit):
+    bin_diameters = [i * binSize for i in range(MaxBinId)]
+    
+    fig, axs = plt.subplots(1, 3, figsize=(18, 6))
+    
+    for idx, mg in enumerate(['Branching', 'Foliose', 'Other']):
+        for year in [0, 4, 7, 11]:
+            year_df = df[(df['MG'] == mg) & (df['Year'] == year)]
+            mean_values = year_df.iloc[:, 2:].mean()
+            std_values = year_df.iloc[:, 2:].std()
+            
+            axs[idx].plot(bin_diameters, mean_values, label=f'Year {year}')
+            axs[idx].fill_between(bin_diameters, mean_values - std_values, mean_values + std_values, alpha=0.2)
+        
+        axs[idx].set_title(f'{mg} {y_label} Over Time')
+        axs[idx].set_xlabel('Bin Diameter (cm)')
+        axs[idx].set_ylabel(f'{y_label} {y_unit}')
+        axs[idx].legend()
+    
+    plt.tight_layout()
+    plt.show()

@@ -1991,333 +1991,289 @@ def fill_nans_columnwise(df, year_col: str | None = 'Year',
 
     return out, created_mask
 
-def plot_bubble_chart_from_dataframe(df, title, category_col='MG', year_interval=4, bubble_scale=100, parallel_offset = 1.2, figsize=(18, 12), x_spacing=1.5, y_spacing=5):
+def plot_bubble_chart_from_dataframe(df, title, category_col='MG', selected_years=None, 
+                                     bubble_scale=100, parallel_offset=0.3, 
+                                     figsize=(18, 12), y_spacing=5,
+                                     title_fontsize=20, label_fontsize=16, tick_fontsize=14, 
+                                     legend_fontsize=12):
     """
     Create a bubble chart showing population distribution by category over time.
     
     Parameters:
     - df: DataFrame with columns for category, year, and bin data (percentages)
-    - y_label: Label for y-axis (default: "Bin Size")
-    - y_unit: Unit for y-axis (default: "cm")
+    - title: Chart title
     - category_col: Column name for categories (default: 'MG')
-    - year_interval: Select every Nth year (default: 4 for every 4th year)
-    - year_start: Starting year for converting model years to actual years (default: 2000)
+    - selected_years: List of actual years to plot (e.g., [2000, 2004, 2008, 2012]) or None for all years
     - bubble_scale: Multiplier for bubble sizes (default: 100)
+    - parallel_offset: Horizontal offset between categories as fraction of year gap (default: 0.3)
+    - figsize: Figure size tuple (default: (18, 12))
+    - y_spacing: Extra spacing for y-axis limits (default: 5)
+    - title_fontsize: Font size for title (default: 20)
+    - label_fontsize: Font size for axis labels (default: 16)
+    - tick_fontsize: Font size for tick labels (default: 14)
+    - legend_fontsize: Font size for legends (default: 12)
     
     Expected DataFrame structure:
     - Column 0: Category (MG)
     - Column 1: Year (model years: 0, 1, 2, 3, ...)
     - Columns 2+: Bin diameter columns (5, 10, 15, ..., 100) with percentages
     """
+    import matplotlib.pyplot as plt
+    import pandas as pd
+    import numpy as np
+    import re
+    import os
     
-    # Configuration parameters
-    parallel_offset = parallel_offset  # Horizontal offset between categories
-    
-    # Get actual bin diameter columns (columns 2 onwards contain bin data)
-    bin_columns = df.columns[2:].tolist()  # Skip category and year columns
-    
-    # Extract bin diameters from column names (assuming they contain numeric values)
+    # Get bin columns and extract diameters
+    bin_columns = df.columns[2:].tolist()
     bin_diameters = []
     for col in bin_columns:
-        # Extract numeric value from column name (e.g., "Bin_5" -> 5, "5cm" -> 5, etc.)
-        import re
         numbers = re.findall(r'\d+', str(col))
         if numbers:
             bin_diameters.append(float(numbers[0]))
         else:
-            # If no number found, use column index * 5 (assuming 5cm increments)
-            bin_diameters.append((len(bin_diameters)) * 5 + 5)
+            bin_diameters.append(len(bin_diameters) * 5 + 5)
     
-    MaxBinId = len(bin_diameters)
+    # Get years to plot - year_start is assumed to be defined elsewhere
+    all_model_years = sorted(df['Year'].unique()) if 'Year' in df.columns else [0, 4, 7, 11]
+    all_actual_years = [year + year_start for year in all_model_years]
     
-    # Get unique years and categories from the data
-    if 'Year' in df.columns:
-        all_years_list = sorted(df['Year'].unique().tolist())
+    if selected_years is not None:
+        # Convert selected actual years to model years
+        selected_model_years = [year - year_start for year in selected_years]
+        # Use only the model years that exist in the data
+        years = [year for year in selected_model_years if year in all_model_years]
+        actual_years = [year + year_start for year in years]
     else:
-        all_years_list = [0, 4, 7, 11]
-    
-    # Select every Nth year to reduce clutter - filter by year values, not array indices
-    if year_interval > 1:
-        # Select years that are multiples of the interval
-        years = [year for year in all_years_list if year % year_interval == 0]
-    else:
-        # If interval is 1, use all years
-        years = all_years_list.copy()
-    
-    print(f"All years in data: {all_years_list}")
-    print(f"Selected years (multiples of {year_interval}): {years}")
-    
-    # Convert model years to actual years
-    actual_years = [year + year_start for year in years]
-    print(f"Actual years for display: {actual_years}")
+        years = all_model_years
+        actual_years = all_actual_years
+        print("Using all available years:")
+        print(f"Model years: {years}")
+        print(f"Actual years: {actual_years}")
     
     categories = sorted(df[category_col].unique()) if category_col in df.columns else ['Branching', 'Foliose', 'Other']
     
-    # Color schemes for each category
-    color_palette = ["#1F77B4", "#C026D3", "#FF7F0E"]  # blue, fuchsia, orange
-    colors = {}
-    for i, category in enumerate(categories):
-        base_color = color_palette[i % len(color_palette)]
-        colors[category] = {
-            'mean': base_color,
-            'std': base_color + '40'  # Add transparency for std
-        }
+    # Color scheme
+    color_palette = ["#1F77B4", "#C026D3", "#FF7F0E"]
+    colors = {cat: color_palette[i % len(color_palette)] for i, cat in enumerate(categories)}
     
-    # Calculate category offsets for parallel display
-    category_offsets = {}
+    # Initial category offsets (will be refined after we know bubble sizes)
     if len(categories) == 1:
-        category_offsets[categories[0]] = 0
-    elif len(categories) == 2:
-        category_offsets[categories[0]] = -parallel_offset/2
-        category_offsets[categories[1]] = parallel_offset/2
-    else:  # 3 or more categories
-        for i, cat in enumerate(categories):
-            category_offsets[cat] = (i - (len(categories)-1)/2) * parallel_offset
+        category_offsets = {categories[0]: 0}
+    else:
+        category_offsets = {cat: (i - (len(categories)-1)/2) * parallel_offset 
+                          for i, cat in enumerate(categories)}
     
-    # Prepare data for plotting
+    # Prepare plot data
     plot_data = []
-    
     for category in categories:
-        for model_year in years:  # Use model years for filtering data
-            actual_year = model_year + year_start  # Convert to actual year for positioning
-            # Filter data for this category and model year
+        for model_year in years:
+            actual_year = model_year + year_start
             year_df = df[(df[category_col] == category) & (df['Year'] == model_year)]
             
             if not year_df.empty:
-                # Get bin data (columns 2 onwards contain the percentage data)
-                bin_data = year_df.iloc[:, 2:]  # All bin columns
-                
-                # Calculate mean and std for each bin across all rows for this category/year
+                bin_data = year_df.iloc[:, 2:]
                 mean_values = bin_data.mean(axis=0)
                 std_values = bin_data.std(axis=0)
                 
-                # Create data points for each bin using actual bin diameters
                 for bin_idx, (col_name, mean_val, std_val) in enumerate(zip(bin_columns, mean_values, std_values)):
-                    if bin_idx < len(bin_diameters):
-                        # Convert to float and check if valid
-                        try:
-                            mean_val = float(mean_val) if pd.notna(mean_val) else 0
-                            std_val = float(std_val) if pd.notna(std_val) else 0
-                        except (ValueError, TypeError):
-                            mean_val = 0
-                            std_val = 0
+                    if bin_idx < len(bin_diameters) and pd.notna(mean_val) and mean_val > 0:
+                        x_pos = actual_year + category_offsets[category]
+                        y_pos = bin_diameters[bin_idx]
                         
-                        # Always define position variables
-                        x_pos = actual_year + category_offsets[category]  # Use actual year for positioning
-                        y_pos = bin_diameters[bin_idx]  # Use actual bin diameter from column
-                        
-                        if mean_val > 0:
-                            # Add mean point (main bubble)
-                            plot_data.append({
-                                'x': x_pos,
-                                'y': y_pos,
-                                'size': mean_val,
-                                'color': colors[category]['mean'],
-                                'category': category,
-                                'year': actual_year,  # Store actual year
-                                'type': 'mean',
-                                'bin_idx': bin_idx
-                            })
-                        
-                        # Add std point (background shading) if std exists
-                        if std_val > 0:
-                            plot_data.append({
-                                'x': x_pos,
-                                'y': y_pos,
-                                'size': std_val,
-                                'color': colors[category]['std'],
-                                'category': category,
-                                'year': actual_year,  # Store actual year
-                                'type': 'std',
-                                'bin_idx': bin_idx
-                            })
+                        plot_data.append({
+                            'x': x_pos, 'y': y_pos, 'size': float(mean_val),
+                            'category': category, 'year': actual_year,
+                            'std': float(std_val) if pd.notna(std_val) else 0
+                        })
     
-    # Create the plot
-    fig, ax = plt.subplots(figsize=(15, 10))
+    # Recalculate category offsets based on actual bubble sizes
+    if len(categories) > 1 and plot_data:
+        if len(actual_years) > 1:
+            min_year_gap = min(actual_years[i+1] - actual_years[i] for i in range(len(actual_years)-1))
+            
+            # Calculate maximum bubble size for adaptive scaling
+            max_bubble_size = max(point['size'] for point in plot_data)
+            # Estimate bubble radius in data coordinates
+            bubble_radius_estimate = (max_bubble_size * bubble_scale) ** 0.5 / 200
+            # Ensure minimum separation to prevent overlap
+            min_separation = max(parallel_offset, bubble_radius_estimate * 2.5)
+            effective_offset = min(min_separation, min_year_gap * 0.3)
+        else:
+            effective_offset = parallel_offset
+            
+        # Recalculate offsets with better spacing
+        category_offsets = {cat: (i - (len(categories)-1)/2) * effective_offset 
+                          for i, cat in enumerate(categories)}
+        
+        # Update x positions in plot_data
+        for point in plot_data:
+            point['x'] = point['year'] + category_offsets[point['category']]
     
-    # Group data by position for proper std shading around mean
-    position_data = {}
+    # Create plot
+    fig, ax = plt.subplots(figsize=figsize)
+    
+    # Plot bubbles
     for point in plot_data:
-        key = (point['x'], point['y'], point['category'])
-        if key not in position_data:
-            position_data[key] = {'mean': None, 'std': None}
-        position_data[key][point['type']] = point
+        # Plot std shading (larger, transparent bubble)
+        if point['std'] > 0:
+            ax.scatter(point['x'], point['y'], 
+                      s=(point['size'] + point['std']) * bubble_scale,
+                      c=colors[point['category']], alpha=0.2, 
+                      edgecolors='none', zorder=1)
+        
+        # Plot mean bubble
+        ax.scatter(point['x'], point['y'], s=point['size'] * bubble_scale,
+                  c=colors[point['category']], alpha=0.8, 
+                  linewidth=0.5, edgecolors='black', zorder=2)
     
-    # Plot standard deviation as shading around mean bubbles
-    for (x, y, category), data in position_data.items():
-        if data['mean'] is not None:
-            mean_point = data['mean']
-            
-            # Plot mean bubble
-            ax.scatter(
-                mean_point['x'], 
-                mean_point['y'], 
-                s=float(mean_point['size']) * bubble_scale,  # Ensure float conversion
-                c=mean_point['color'],
-                alpha=0.8,
-                linewidth=0.5,
-                edgecolors='black',
-                zorder=2,
-                label=f'{category}' if mean_point['bin_idx'] == 0 and mean_point['year'] == actual_years[0] else ""
-            )
-            
-            # Plot std shading around the mean if std data exists
-            if data['std'] is not None:
-                std_point = data['std']
-                # Create larger bubble for std shading
-                std_size = float(mean_point['size']) + float(std_point['size'])  # Ensure float conversion
-                
-                ax.scatter(
-                    std_point['x'], 
-                    std_point['y'], 
-                    s=std_size * bubble_scale,  # Use configurable scale factor
-                    c=std_point['color'],
-                    alpha=0.2,  # Very light for background
-                    edgecolors='none',
-                    zorder=1
-                )
-    
-    # Add vertical lines to separate years (optional) - position at actual years
+    # Add year separator lines
     if len(actual_years) > 1:
         for i in range(len(actual_years)-1):
             separator_x = (actual_years[i] + actual_years[i+1]) / 2
             ax.axvline(x=separator_x, color='lightgray', linestyle='--', alpha=0.5)
     
-    # Customize plot appearance
-    ax.set_xlabel('Year', fontsize=14, fontweight='bold')
-    ax.set_ylabel(f'Bin diameter (cm)', fontsize=14, fontweight='bold')
+    # Customize axes
+    ax.set_xlabel('Year', fontsize=label_fontsize, fontweight='bold')
+    ax.set_ylabel('Bin diameter (cm)', fontsize=label_fontsize, fontweight='bold')
     
-    # Set x-axis ticks and labels with actual years - more robust approach
+    # Set x-axis with shoulder margins equal to year gaps
     ax.set_xticks(actual_years)
+    ax.set_xticklabels([str(int(year)) for year in actual_years])
     
-    # Create distinct labels for each year
-    year_labels = []
-    for actual_year in actual_years:
-        year_labels.append(str(int(actual_year)))
-    
-    ax.set_xticklabels(year_labels, rotation=0, ha='center')
-    
-    # Force the x-axis to show the full range with proper spacing
     if len(actual_years) > 1:
+        # Calculate the actual gap between consecutive years
+        min_year_gap = min(actual_years[i+1] - actual_years[i] for i in range(len(actual_years)-1))
+        
+        # The expansion factor creates gaps between years
+        expansion_factor = 0.15  # 15% as before
+        year_gap_size = min_year_gap * expansion_factor
+        
+        # Use the same gap size for shoulder margins
+        shoulder_margin = year_gap_size
+        
+        # Apply expansion to create year gaps, but use calculated shoulder margins
         year_span = max(actual_years) - min(actual_years)
-        margin = max(1, year_span * 0.1)  # 10% margin
-        ax.set_xlim(min(actual_years) - margin, max(actual_years) + margin)
+        expanded_span = year_span * (1 + expansion_factor)
+        center = (min(actual_years) + max(actual_years)) / 2
+        
+        ax.set_xlim(center - expanded_span/2 - shoulder_margin, 
+                   center + expanded_span/2 + shoulder_margin)
     else:
-        ax.set_xlim(actual_years[0] - 1, actual_years[0] + 1)
+        # For single year, use a reasonable default
+        ax.set_xlim(actual_years[0] - 0.5, actual_years[0] + 0.5)
     
-    # Ensure ticks are visible and properly spaced
-    ax.tick_params(axis='x', labelsize=12)
+    # Set tick label sizes
+    ax.tick_params(axis='x', labelsize=tick_fontsize)
+    ax.tick_params(axis='y', labelsize=tick_fontsize)
     
-    # Update title to reflect actual year range
-    if len(actual_years) > 1:
-        year_range = f"({actual_years[0]}-{actual_years[-1]})"
-    else:
-        year_range = f"({actual_years[0]})"
-    
-    ax.set_title(f'{title} by Category Over Time {year_range}\n(Bubble size represents {title})', fontsize=16, fontweight='bold', pad=20)
-
-# Set y-axis to show actual bin diameters with custom spacing
-    if len(bin_diameters) > 0:
+    # Set y-axis
+    if bin_diameters:
         ax.set_ylim(min(bin_diameters) - y_spacing, max(bin_diameters) + y_spacing)
-        # Use actual bin diameters for y-axis ticks
         ax.set_yticks(bin_diameters)
-        ax.set_yticklabels([f'{int(diameter)}' for diameter in bin_diameters]) 
-
-    # Add grid for better readability
+        ax.set_yticklabels([f'{int(d)}' for d in bin_diameters], fontsize=tick_fontsize)
+    
+    # Title
+    year_range = f"({actual_years[0]}-{actual_years[-1]})" if len(actual_years) > 1 else f"({actual_years[0]})"
+    ax.set_title(f'{title} by Category Over Time {year_range}\n(Bubble size represents {title})', 
+                fontsize=title_fontsize, fontweight='bold', pad=20)
+    
+    # Grid
     ax.grid(True, alpha=0.3, linestyle='-', linewidth=0.5)
     
-    # Create legend
-    legend_elements = []
-    for category in categories:
-        legend_elements.append(plt.Line2D([0], [0], marker='o', color='w', 
-                                        markerfacecolor=colors[category]['mean'], 
-                                        markersize=10, label=f'{category}',
-                                        markeredgecolor='black', markeredgewidth=0.5))
+    # Create legends outside plot area
+    # Category legend with larger markers
+    category_handles = [plt.Line2D([0], [0], marker='o', color='w', 
+                                  markerfacecolor=colors[cat], markersize=30,  # Increased from 20 to 30
+                                  markeredgecolor='black', markeredgewidth=0.5)
+                       for cat in categories]
     
-    # Add legend with better positioning
-    cat_legend = ax.legend(
-    handles=legend_elements,
-    loc='upper right',
-    bbox_to_anchor=(0.99, 1.00),   # (x, y) in axes coords
-    bbox_transform=ax.transAxes,   # interpret bbox in axes coords
-    frameon=True,
-    fancybox=True,
-    shadow=True,
-    fontsize=12
-)
-
-    # Bubble size legend: collect the sizes used for mean bubbles
-    _used_sizes = [p['size'] for p in plot_data if p['type'] == 'mean' and p['size'] > 0]
-
-    if _used_sizes:
-        vmin = float(min(_used_sizes))
-        vmax = float(max(_used_sizes))
+    cat_legend = ax.legend(category_handles, categories, title='Categories',
+                          bbox_to_anchor=(1.02, 1), loc='upper left',
+                          frameon=True, fancybox=True, shadow=True, 
+                          fontsize=legend_fontsize, title_fontsize=legend_fontsize+2,
+                          labelspacing=1.2, handlelength=2.0, 
+                          handletextpad=1.0, borderpad=1.2)
     
-        # dynamic base = 1/5 of max bubble value
-        base = max(vmax / 5.0, 1e-12)
-    
-        # pick 3 representative values between vmin and vmax
-        raw_ticks = np.linspace(vmin, vmax, 3)
-    
-        # --- neat rounding: choose granularity to keep ~3 significant digits ---
-        exp = int(np.floor(np.log10(base)))         # order of magnitude of base
-        gran = 10 ** max(exp - 2, 0)                # e.g. base=17729 -> exp=4 -> gran=10**2=100
-    
-        # snap to nearest multiple of gran
-        tick_vals = np.round(raw_ticks / gran) * gran
-        tick_vals = np.array(sorted(set(tick_vals)))
-        tick_vals[tick_vals <= 0] = gran  # avoid zero-size markers
-    
-        # fallback if rounding collapsed distincts
-        if tick_vals.size < 3:
-            mids = [vmin, (vmin + vmax)/2.0, vmax]
-            tick_vals = np.array(sorted(set(np.round(np.array(mids)/gran) * gran)))
-            tick_vals[tick_vals <= 0] = gran
-
-    # build legend handles with SAME size mapping (s = value * bubble_scale)
-    size_handles = [
-        ax.scatter([], [], s=float(val) * bubble_scale, color='black', alpha=0.35, edgecolors='black')
-        for val in tick_vals
-    ]
-
-    # pretty labels: integers with commas when gran >= 1; otherwise sensible decimals
-    def _fmt(v):
-        if gran >= 1:
-            return f"{int(v):,}"
-        # decimals: number of places based on gran (e.g., gran=0.01 -> 2 dp)
-        places = max(0, int(np.ceil(-np.log10(gran))))
-        return f"{v:.{places}f}"
+    # Size legend
+    sizes = [p['size'] for p in plot_data if p['size'] > 0]
+    if sizes:
+        vmin, vmax = min(sizes), max(sizes)
         
-    size_labels = [_fmt(val) for val in tick_vals]
-
-    size_legend = ax.legend(
-        size_handles, size_labels,
-        title=f"{title} scale",
-        loc="upper right",
-        bbox_to_anchor=(0.99, 0.89),      # same x, lower y (under the category legend)
-        bbox_transform=ax.transAxes,
-        frameon=True, fancybox=True, shadow=False,
-        fontsize=11,
-        title_fontsize=12,
-        borderpad=1.4,      # ↑ makes the legend box itself roomier
-        labelspacing=1.5,
-        handlelength=2.2,
-        handletextpad=0.8,
-        borderaxespad=0.0
-)
-    # keep both legends
-    ax.add_artist(cat_legend)
-
-    # Define the graph directory path
-    graph_dir = r'output/figures'
-
-    # Save the combined plot to the specified folder
-    graph_path = os.path.join(graph_dir, f'{title} bubble_graph.png')
-    plt.savefig(graph_path)
-
-    # Adjust layout and display
-    plt.tight_layout()
-    plt.show()
+        # Always create exactly 3 distinct values: small, middle, and large
+        if vmax > vmin:
+            # Small: 10th percentile value (avoids zeros)
+            small_val = np.percentile(sizes, 10)
+            
+            # Large: actual maximum value
+            large_val = vmax  
+            
+            # Middle: halfway between small and large
+            middle_val = (small_val + large_val) / 2
+            
+            tick_vals = np.array([small_val, middle_val, large_val])
+            
+            tick_vals = np.array([small_val, middle_val, large_val])
+            
+            # Simple rounding to avoid too many decimals
+            if vmax >= 1000:
+                tick_vals = np.round(tick_vals, -1)  # Round to nearest 10
+            elif vmax >= 100:
+                tick_vals = np.round(tick_vals, 0)   # Round to nearest 1
+            elif vmax >= 10:
+                tick_vals = np.round(tick_vals, 1)   # Round to 1 decimal
+            else:
+                tick_vals = np.round(tick_vals, 2)   # Round to 2 decimals
+            
+            # Ensure all values are distinct and positive
+            tick_vals = tick_vals[tick_vals > 0]
+            tick_vals = np.unique(tick_vals)
+            
+            # If we lost values due to rounding, spread them out manually
+            if len(tick_vals) < 3:
+                tick_vals = np.array([vmin, (vmin + large_val) / 2, large_val])
+                if vmax >= 100:
+                    tick_vals = np.round(tick_vals, 0)
+                else:
+                    tick_vals = np.round(tick_vals, 1)
+        else:
+            # All values are the same
+            tick_vals = np.array([vmin])
+        
+        # Create legend bubbles that match the actual plot bubble sizes exactly
+        size_handles = [ax.scatter([], [], s=val * bubble_scale, color='black', 
+                                  alpha=0.6, edgecolors='black') for val in tick_vals]
+        
+        # Format labels based on value range
+        if np.max(tick_vals) >= 1000:
+            size_labels = [f"{int(val):,}" for val in tick_vals]
+        elif np.max(tick_vals) >= 100:
+            size_labels = [f"{int(val)}" for val in tick_vals]
+        elif np.max(tick_vals) >= 1:
+            size_labels = [f"{val:.1f}" for val in tick_vals]
+        else:
+            size_labels = [f"{val:.2f}" for val in tick_vals]
+        
+        size_legend = ax.legend(size_handles, size_labels, title=f"{title} Scale",
+                               bbox_to_anchor=(1.02, 0.65), loc='upper left',
+                               frameon=True, fancybox=True, 
+                               fontsize=legend_fontsize, title_fontsize=legend_fontsize+2,
+                               labelspacing=2.0, handlelength=3.0, 
+                               handletextpad=1.2, borderpad=1.5,
+                               columnspacing=1.0)
+        
+        # Keep both legends
+        ax.add_artist(cat_legend)
     
+    # Adjust layout to accommodate external legends
+    plt.tight_layout()
+    plt.subplots_adjust(right=0.85)
+    
+    # Save plot
+    graph_dir = 'output/figures'
+    os.makedirs(graph_dir, exist_ok=True)
+    graph_path = os.path.join(graph_dir, f'{title}_bubble_graph.png')
+    plt.savefig(graph_path, bbox_inches='tight', dpi=300, facecolor='white')
+    plt.show()
     
     return fig, ax
