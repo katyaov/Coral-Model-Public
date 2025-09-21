@@ -1,10 +1,26 @@
 from config import *
 import matplotlib.pyplot as plt
-
-import matplotlib as mpl
 import matplotlib.ticker as mticker
+import os
+import numpy as np
+import pandas as pd   
+from matplotlib.ticker import FormatStrFormatter, MaxNLocator
+import re
+from datetime import datetime
+from zoneinfo import ZoneInfo 
 
 opts = CoralOptions()
+
+try:
+    from user_inputs import bleaching, cyclone
+except Exception:
+    bleaching = True  # Default values
+    cyclone = True
+
+if not hasattr(opts, "bleaching"):
+    opts.bleaching = bool(bleaching)
+if not hasattr(opts, "cyclone"):
+    opts.cyclone = bool(cyclone)
 
 def get_recruited_corals(available_substrate_percentage, pop_flag = True):
     '''
@@ -29,6 +45,7 @@ def get_recruited_corals(available_substrate_percentage, pop_flag = True):
     brooder_cover_cm2_per_m2 = brooder_cover_m2 * 10000 /opts.reef_area
     
     # Calculate the number of polyps that can grow on the available substrate area
+    polyp_size = 200 * 1e-4
     number_polyps = brooder_cover_cm2_per_m2/polyp_size
     number_polyps_per_cm2 = number_polyps/brooder_cover_cm2_per_m2
     
@@ -149,6 +166,7 @@ def get_retention_rate():
         A tuple containing two float values representing the retention rates for branching and other coral species, respectively.
     """
     
+  #  if opts.reef_shape in [7,8,9]: #very high rate
     #    retention_rate_bf = retention_rates_8d[0]
      #   retention_rate_o = retention_rates_4d[0]
 
@@ -215,11 +233,8 @@ def get_coral_cover_in_percentage(surface_area_df,coral_type):
         Percentage of the specified coral type on the reef.
     """
     
-    coral_cover = sum(surface_area_df[coral_type].clip(lower=0)) # to ensure to accidental zeroes creep in
-    percent_cover = 100 * coral_cover / opts.reef_area   
-
-    #to make sure this value never falls below zero
-    return max(percent_cover, 0)
+    coral_cover = sum(surface_area_df[coral_type])
+    return 100*coral_cover/opts.reef_area
 
 
 def get_total_coral_cover_in_percentage(surface_area_df):
@@ -236,16 +251,14 @@ def get_total_coral_cover_in_percentage(surface_area_df):
     float
         The total percentage coral cover on the reef based on the input surface area data.
     """
-
-    # Ensure negative surface areas are treated as zero
-    clipped_df = surface_area_df.clip(lower=0)
-
-    # Calculate the total surface area covered by each coral type
-    coral_cover = {i: clipped_df[i].sum() for i in coral_type}
     
-    # Calculate and return the total percentage coral cover (non-negative)
-    percent_cover = 100 * sum(coral_cover.values()) / opts.reef_area
-    return max(percent_cover, 0)
+    # Calculate the total surface area covered by each coral type
+    coral_cover = {i: surface_area_df[i][:].sum() for i in coral_type}
+    
+    # Calculate the total percentage coral cover on the reef
+    return 100*sum(coral_cover.values())/opts.reef_area
+
+
 
 def plot_population_distribution(year, log=False):
     """
@@ -322,8 +335,7 @@ def plot_population_distribution_in_percentage(year, log=False):
     plt.plot(binDiameter,branching ,'-*',label = 'Branching')
     plt.plot(binDiameter,foliose ,'-*',label = 'Foliose')
     plt.plot(binDiameter,other,'-*',label = 'Other')
-    actual_year = int(year_start) + int(year)  # convert model year index to actual year
-    plt.title(f'Percentage population distribution in {actual_year}')
+    plt.title(f'Percentage population distribution of year {year}')
     plt.xlabel('Bin Diameter (cm)', fontsize = '15')
     plt.ylabel('Percentage population number', fontsize = '15')
     if log:
@@ -352,7 +364,7 @@ def plot_surface_area_distribution(year, log=False):
 
     """
     
-    # Get the surface area distribution data for the given year
+     # Get the surface area distribution data for the given year
     df = opts.yearly_surface_area_df_list[year]
     
     # Set up the x-axis (bin diameter)
@@ -376,6 +388,7 @@ def plot_surface_area_distribution(year, log=False):
     plot_file = os.path.join(output_folder, 'percentage_area_distribution.svg')
     plt.savefig(plot_file, format='svg')
     plt.show()
+    
     
 
 def plot_coral_type_areal_change(coral_type,log=False, *args):
@@ -473,6 +486,46 @@ def plot_coral_type_population_change(coral_type, log=False, *args):
     plot_file = os.path.join(output_folder, 'yearly_population_change.svg')
     plt.savefig(plot_file, format='svg')
     plt.show()
+    
+
+def get_initial_surface_area(PSD):
+    """
+    Returns the initial surface area of coral colonies based on the coral population size distribution (PSD) and current coral cover.
+    Parameters
+    ----------
+    PSD : pandas DataFrame
+        The coral population size distribution for different coral types in different size bins.
+
+    Returns
+    -------
+    surface_area : pandas DataFrame
+        A DataFrame containing the initial surface area of coral colonies for different coral types in different size bins.
+
+    """
+    
+    # Calculate the surface area of coral colonies based on PSD and current coral cover
+    surface_area = pd.DataFrame(
+        {
+            'Branching': [PSD['Branching'][j] * opts.current_coral_cover['Branching'] * opts.reef_area/100/100 for j in range(MaxBinId)],
+            'Foliose': [PSD['Foliose'][j] * opts.current_coral_cover['Foliose'] * opts.reef_area/100/100 for j in range(MaxBinId)],
+            'Other': [PSD['Other'][j] * opts.current_coral_cover['Other'] * opts.reef_area/100/100 for j in range(MaxBinId)],
+
+        }
+    )
+    
+    # Calculate recruitment
+    recruitment = pd.DataFrame({'Branching': get_recruited_corals(opts.available_substrate_percentage, False)[0], 'Foliose': get_recruited_corals(opts.available_substrate_percentage, False)[1], 'Other': get_recruited_corals(opts.available_substrate_percentage, False)[2] }, index=[0])
+    
+    # Set initial values for year and total coral cover
+    opts.year = 0
+    opts.total_coral_cover_df = pd.DataFrame(columns=['Year', 'Branching_Area (%)', 'Foliose_Area (%)', 'Other_Area (%)', 'total_coral_cover (%)'])
+    
+    # Calculate and store the initial total coral cover
+    yearly_total_coral_cover = pd.DataFrame({'Year':int(opts.year), 'Branching_Area (%)':opts.current_coral_cover['Branching'], 'Foliose_Area (%)':opts.current_coral_cover['Foliose'], 'Other_Area (%)':opts.current_coral_cover['Other'], 'total_coral_cover (%)': opts.current_total_coral_cover}, index=[0])
+    opts.total_coral_cover_df = pd.concat([opts.total_coral_cover_df.loc[:], yearly_total_coral_cover]).reset_index(drop = True)
+    
+    return surface_area  
+
 
 def estimate_initial_number_of_corals(x_i, reef_area, target_coral_cover):
     """
@@ -660,55 +713,72 @@ def get_surface_area(population_df):
 
        
 def initialize_coral():
-    """
-    Initialize the coral ecosystem at year = 0.
-
-    Returns
-    -------
-    None.
-
-    """
-        
-    opts.year = 0
-    opts.dhw_lst = create_dhw_list(dhw_years)
-    opts.current_dhw = opts.dhw_lst[opts.year]
-    opts.cyc_lst = create_cyclone_list(cyclone_years)
-    opts.current_cyc = opts.cyc_lst[opts.year]
-    opts.current_coral_cover = initial_coral_cover.copy()
-    opts.brooder_cover = initial_brooder_cover
-    opts.spawner_cover = initial_spawner_cover
-    opts.current_total_coral_cover = initial_total_coral_cover
-    opts.yearly_total_coral_cover_df = pd.DataFrame({'Year':0, 
-                                                'Branching_Area (%)':initial_coral_cover['Branching'], 
-                                                'Foliose_Area (%)':initial_coral_cover['Foliose'], 
-                                                'Other_Area (%)':initial_coral_cover['Other'], 
-                                                'total_coral_cover (%)':initial_total_coral_cover}, index=[0])
-    
-    opts.current_benthic_cover = opts.initial_benthic_cover_dict.copy()
-    opts.yearly_benthic_cover_df = pd.DataFrame({'Year':opts.year, 
-                                          'total_benthic_cover (%)':opts.current_benthic_cover['total'], 
-                                          'available_substrate (%)':opts.current_benthic_cover['available_substrate'], 
-                                          'hard_substrate (%)':opts.current_benthic_cover['hard_substrate'], 
-                                          'dead_coral (%)':opts.current_benthic_cover['dead_coral'], 
-                                          'CCA (%)':opts.current_benthic_cover['CCA'], 
-                                          'turfing_algae (%)':opts.current_benthic_cover['turfing_algae'], 
-                                          'macro_algae (%)':opts.current_benthic_cover['macro_algae'], 
-                                          'rubble (%)':opts.current_benthic_cover['rubble'], 
-                                          'sediment (%)':opts.current_benthic_cover['sediment'], 
-                                          'total_cc ':opts.current_total_coral_cover,
-                                          'unavailable_sub':opts.unavailable_substrate_percentage,
-                                          'tot':opts.available_substrate_percentage + opts.unavailable_substrate_percentage + opts.current_total_coral_cover, 
-                                         }, index=[0])
-    
-    opts.current_population_df = get_initial_population(PSD_T0)
-    opts.yearly_population_df_list = [opts.current_population_df]
-    opts.current_surface_area_m2_df = get_surface_area(opts.current_population_df)
-    opts.yearly_surface_area_df_list = [opts.current_surface_area_m2_df]
-    opts.unavailable_substrate_percentage = opts.current_benthic_cover['macro_algae'] + opts.current_benthic_cover['rubble'] + opts.current_benthic_cover['sediment']
-    opts.available_substrate_percentage = get_available_substrate()
-    opts.maximum_achievable_substrate_percentage = 100 - opts.unavailable_substrate_percentage
-    # PCM_rates_dhw = get_PCM_rates_after_dhw(PCM_rates,opts.current_dhw,branching_bleaching_rate, foliose_bleaching_rate, other_bleaching_rate)
-    opts.upper_diameter = MaxBinId * binSize
+   """
+   Initialize the coral ecosystem at year = 0.
+   Returns
+   -------
+   None.
+   """
+   # Ensure attributes exist with defaults
+   if not hasattr(opts, "bleaching"):
+       opts.bleaching = True
+   if not hasattr(opts, "cyclone"):
+       opts.cyclone = True
+   
+   opts.year = 0
+   
+   # --- Bleaching handling ---
+   if opts.bleaching:
+       opts.dhw_lst = create_dhw_list(dhw_years)
+       opts.current_dhw = opts.dhw_lst[opts.year]
+       opts.dhw_counter = 0
+   else:
+       opts.dhw_lst = None
+       opts.current_dhw = 0
+       opts.dhw_counter = 0
+   
+   # --- Cyclone handling ---
+   if opts.cyclone:
+       opts.cyc_lst = create_cyclone_list(cyclone_years)
+       opts.current_cyc = opts.cyc_lst[opts.year]
+   else:
+       opts.cyc_lst = None
+       opts.current_cyc = [0, 0]
+   
+   opts.current_coral_cover = initial_coral_cover.copy()
+   opts.brooder_cover = initial_brooder_cover
+   opts.spawner_cover = initial_spawner_cover
+   opts.current_total_coral_cover = initial_total_coral_cover
+   opts.yearly_total_coral_cover_df = pd.DataFrame({'Year':0, 
+                                               'Branching_Area (%)':initial_coral_cover['Branching'], 
+                                               'Foliose_Area (%)':initial_coral_cover['Foliose'], 
+                                               'Other_Area (%)':initial_coral_cover['Other'], 
+                                               'total_coral_cover (%)':initial_total_coral_cover}, index=[0])
+   
+   opts.current_benthic_cover = opts.initial_benthic_cover_dict.copy()
+   opts.yearly_benthic_cover_df = pd.DataFrame({'Year':opts.year, 
+                                         'total_benthic_cover (%)':opts.current_benthic_cover['total'], 
+                                         'available_substrate (%)':opts.current_benthic_cover['available_substrate'], 
+                                         'hard_substrate (%)':opts.current_benthic_cover['hard_substrate'], 
+                                         'dead_coral (%)':opts.current_benthic_cover['dead_coral'], 
+                                         'CCA (%)':opts.current_benthic_cover['CCA'], 
+                                         'turfing_algae (%)':opts.current_benthic_cover['turfing_algae'], 
+                                         'macro_algae (%)':opts.current_benthic_cover['macro_algae'], 
+                                         'rubble (%)':opts.current_benthic_cover['rubble'], 
+                                         'sediment (%)':opts.current_benthic_cover['sediment'], 
+                                         'total_cc ':opts.current_total_coral_cover,
+                                         'unavailable_sub':opts.unavailable_substrate_percentage,
+                                         'tot':opts.available_substrate_percentage + opts.unavailable_substrate_percentage + opts.current_total_coral_cover, 
+                                        }, index=[0])
+   
+   opts.current_population_df = get_initial_population(PSD_T0)
+   opts.yearly_population_df_list = [opts.current_population_df]
+   opts.current_surface_area_m2_df = get_surface_area(opts.current_population_df)
+   opts.yearly_surface_area_df_list = [opts.current_surface_area_m2_df]
+   opts.unavailable_substrate_percentage = opts.current_benthic_cover['macro_algae'] + opts.current_benthic_cover['rubble'] + opts.current_benthic_cover['sediment']
+   opts.available_substrate_percentage = get_available_substrate()
+   opts.maximum_achievable_substrate_percentage = 100 - opts.unavailable_substrate_percentage
+   opts.upper_diameter = MaxBinId * binSize
         
 
 
@@ -960,6 +1030,9 @@ def calculate_population_change(oldPop,growth_rate,pcm_rate,wcm_rate,available_s
             newPoplist[i] += rmn
             newPoplist[i+1] += grw
             newPoplist[i+2] += grw_grw
+
+    # Ensure no negative populations (biologically impossible)
+    newPoplist = np.maximum(newPoplist, 0)
         
     return newPoplist.astype(int)
 
@@ -980,27 +1053,36 @@ def run_yearly_change(PSD_df, Years):
     -------
     pandas.DataFrame
         A dataframe containing yearly total coral cover data.
-    """
-    
-    # generate a random growth slope for growth rate
+    """    
+    #generate a random growth slope for growth rate
     opts.gr_slope = random.uniform(0.01, 0.04)
     
     opts.dhw_counter = 0
         
     # Run simulation for given number of years
-    for year in range(1,Years + 1):
+    for year in range(1, Years + 1):
         opts.year = year
-        opts.current_dhw = opts.dhw_lst[opts.year]
         
-        # count the number of bleaching that took place
-        if opts.current_dhw !=0 :
-            # every time bleaching happens the coral becomes resilient to bleaching
-            # hence update the coefficient
-            opts.dhw_counter += 1
+        # Handle bleaching only if enabled
+        if getattr(opts, "bleaching", True) and opts.dhw_lst is not None:
+            opts.current_dhw = opts.dhw_lst[opts.year]
+            # count the number of bleaching that took place
+            if opts.current_dhw != 0:
+                # every time bleaching happens the coral becomes resilient to bleaching
+                # hence update the coefficient
+                opts.dhw_counter += 1
+        else:
+            opts.current_dhw = 0
         
-        opts.current_cyc = opts.cyc_lst[opts.year]
-        PCM_rates_dhw = get_PCM_rates_after_dhw(PCM_rates,opts.current_dhw,branching_bleaching_rate, foliose_bleaching_rate, other_bleaching_rate)
+        # Handle cyclones only if enabled
+        if getattr(opts, "cyclone", True) and opts.cyc_lst is not None:
+            opts.current_cyc = opts.cyc_lst[opts.year]
+        else:
+            opts.current_cyc = [0, 0]
+        
+        PCM_rates_dhw = get_PCM_rates_after_dhw(PCM_rates, opts.current_dhw, branching_bleaching_rate, foliose_bleaching_rate, other_bleaching_rate)
         WCM_rate_cyc = get_WCM_rates_after_cyclones(WCM_rates, opts.current_cyc[0], opts.current_cyc[1])
+        
         new_branching_pop = calculate_population_change(opts.current_population_df['Branching'], growth_rate['Branching'],PCM_rates_dhw['Branching'],WCM_rate_cyc['Branching'],opts.current_total_coral_cover,'Branching')
         new_foliose_pop = calculate_population_change(opts.current_population_df['Foliose'], growth_rate['Foliose'],PCM_rates_dhw['Foliose'],WCM_rate_cyc['Foliose'],opts.current_total_coral_cover,'Foliose')
         new_other_pop = calculate_population_change(opts.current_population_df['Other'], growth_rate['Other'],PCM_rates_dhw['Other'],WCM_rate_cyc['Other'],opts.current_total_coral_cover,'Other')
@@ -1049,9 +1131,22 @@ def run_coral_model(PSD_df, Years):
     initialize_coral()
     return run_yearly_change(PSD_df, Years)
 
-def run_multiple_model_iterations_total_cover(number_of_iteration, workbook_path=None):
-    import os, pandas as pd, numpy as np
 
+def run_multiple_model_iterations_total_cover(number_of_iteration, workbook_path=None):
+    """
+    Runs the yearly growth simulation for a given number of iterations and returns a DataFrame with the yearly total coral cover for each iteration.
+    
+    Parameters
+    ----------
+    number_of_iteration : int
+        The number of iterations to run the simulation.
+    
+    Returns
+    -------
+    pandas.DataFrame
+        A DataFrame with the yearly total coral cover for each iteration.
+    """
+    
     # pick an engine that actually exists in this kernel
     try:
         import xlsxwriter  # noqa: F401
@@ -1093,28 +1188,34 @@ def run_multiple_model_iterations_total_cover(number_of_iteration, workbook_path
         iters_df = pd.concat(iteration_series, axis=1)
         averaged = iters_df.mean(axis=1)
         years = pd.Series(np.arange(0, len(iters_df)), name='year')
+        
         total_cover_df = pd.concat([years.to_frame(), iters_df, averaged.rename('averaged').to_frame()], axis=1)
         total_cover_df.to_excel(writer, sheet_name='summary_total_cover', index=False)
 
     return total_cover_df, workbook_path
 
+
 def plot_growth_rate_iterations(total_cover_df):
     """
-    Plot the growth rate iterations using actual years on the x-axis.
-    Assumes total_cover_df has a 'year' column with 0..N-1.
+    Plot the growth rate iterations.
+
+    Parameters
+    ----------
+    growth_rate_total_cover_df : pandas DataFrame
+        A pandas DataFrame containing the total coral cover values for each year of each iteration,
+        as well as an "averaged" column with the average values for each year across all iterations.
+
+    Returns
+    -------
+    None
+
     """
-    import os
-    import numpy as np
-    import pandas as pd
-    
-    import matplotlib.pyplot as plt
-    from matplotlib.ticker import FormatStrFormatter, MaxNLocator
     
     label_size = 12
     plt.rcParams['xtick.labelsize'] = label_size
     plt.rcParams['ytick.labelsize'] = label_size
 
-    # 1) Build x as ACTUAL years
+    # 1) Build x as actual years
     yrs = total_cover_df['year'].to_numpy()
     # If 'year' already holds real years, this keeps them; if it's indices, add year_start
     x = (yrs + year_start) if yrs.min() < 1000 else yrs
@@ -1142,412 +1243,49 @@ def plot_growth_rate_iterations(total_cover_df):
     plt.savefig(plot_file, format='svg')
     plt.show()    
 
+
 # Function to run the model multiple iterations and collect the results 
 def run_model_iterations_all_parameters(number_of_iterations):
-    """
-    Run the model N times and return:
-      - final_df: merged per-iteration results (long, with 'Iteration')
-      - population_size_df: raw population by bin (Iteration, MG, Year, bins…)
-      - percentage_population_size_df: % population by bin (same layout)
-      - area_df: surface area by bin (same layout)
-    """
-    import pandas as pd
-
     population_results = []
     percentage_population_results = []
     area_results = []
     final_results = []
-
-    morphogroups = ['Branching', 'Foliose', 'Other']  # adjust if needed
-
-    for iteration in range(1, number_of_iterations + 1):
-        # --- run one iteration ---
-        coral_model_results = run_coral_model(PSD_T0, MaxYear)   # must include 'Year'
-        benthic_cover_results = opts.yearly_benthic_cover_df     # updated by the run
-        rugosity_results = get_rugosity_list()                   # length should match years
-
-        # Merge full results for this iteration
-        merged_results = pd.merge(coral_model_results, benthic_cover_results, on='Year', how='left')
-        if len(rugosity_results) != len(merged_results):
-            raise ValueError(
-                f"Rugosity length {len(rugosity_results)} != years {len(merged_results)}"
-            )
+    
+    for _ in range(100):
+        coral_model_results = run_coral_model(PSD_T0, MaxYear)
+        benthic_cover_results = opts.yearly_benthic_cover_df
+        rugosity_results = get_rugosity_list()
+        
+        # Merge the results into a single DataFrame
+        merged_results = pd.merge(coral_model_results, benthic_cover_results, on='Year')
         merged_results['Rugosity'] = rugosity_results
-        merged_results['Iteration'] = iteration
+        
         final_results.append(merged_results)
-
-        # Collect population / %population / area rows
+        
+        # Collect population, percentage population, and area results
         for year in range(MaxYear + 1):
             population_df = opts.yearly_population_df_list[year]
             surface_area_df = opts.yearly_surface_area_df_list[year]
-
-            for mg in morphogroups:
-                # population by bin
-                pop_vals = population_df[mg].tolist()
-
-                # percentage population by bin (safe when total is 0)
+            
+            for mg in ['Branching', 'Foliose', 'Other']:
+                # Population Size DataFrame
+                pop_size_row = [mg, year] + population_df[mg].tolist()
+                population_results.append(pop_size_row)
+                
+                # Percentage Population Size DataFrame
                 total_pop = population_df[mg].sum()
-                if total_pop and total_pop != 0:
-                    perc_vals = (population_df[mg] / total_pop * 100.0).tolist()
-                else:
-                    perc_vals = [0.0] * len(pop_vals)
-
-                # area by bin
-                area_vals = surface_area_df[mg].tolist()
-
-                # prepend Iteration, MG, Year
-                population_results.append([iteration, mg, year] + pop_vals)
-                percentage_population_results.append([iteration, mg, year] + perc_vals)
-                area_results.append([iteration, mg, year] + area_vals)
-
-    # Stack merged results
-    final_df = pd.concat(final_results, ignore_index=True)
-
-    # --- Build DataFrames from the lists with the correct headers ---
-    bin_diameters = [i * binSize for i in range(MaxBinId)]
-    cols = ['Iteration', 'MG', 'Year'] + [f'Bin Diameter {d} (cm)' for d in bin_diameters]
-
-    population_size_df = pd.DataFrame(population_results, columns=cols)
-    percentage_population_size_df = pd.DataFrame(percentage_population_results, columns=cols)
-    area_df = pd.DataFrame(area_results, columns=cols)
-
-    # Ensure numeric bin columns
-    bin_cols = cols[3:]
-    for df in (population_size_df, percentage_population_size_df, area_df):
-        df[bin_cols] = df[bin_cols].apply(pd.to_numeric, errors='coerce')
-
-    return final_df, population_size_df, percentage_population_size_df, area_df
-
-def plot_bubble_chart_from_dataframe(df, title, category_col='MG', year_interval=4, bubble_scale=100, parallel_offset = 1.2, figsize=(18, 12), x_spacing=1.5, y_spacing=5):
-    """
-    Create a bubble chart showing population distribution by category over time.
-    
-    Parameters:
-    - df: DataFrame with columns for category, year, and bin data (percentages)
-    - y_label: Label for y-axis (default: "Bin Size")
-    - y_unit: Unit for y-axis (default: "cm")
-    - category_col: Column name for categories (default: 'MG')
-    - year_interval: Select every Nth year (default: 4 for every 4th year)
-    - year_start: Starting year for converting model years to actual years (default: 2000)
-    - bubble_scale: Multiplier for bubble sizes (default: 100)
-    
-    Expected DataFrame structure:
-    - Column 0: Category (MG)
-    - Column 1: Year (model years: 0, 1, 2, 3, ...)
-    - Columns 2+: Bin diameter columns (5, 10, 15, ..., 100) with percentages
-    """
-    
-    # Configuration parameters
-    parallel_offset = parallel_offset  # Horizontal offset between categories
-    
-    # Get actual bin diameter columns (columns 2 onwards contain bin data)
-    bin_columns = df.columns[2:].tolist()  # Skip category and year columns
-    
-    # Extract bin diameters from column names (assuming they contain numeric values)
-    bin_diameters = []
-    for col in bin_columns:
-        # Extract numeric value from column name (e.g., "Bin_5" -> 5, "5cm" -> 5, etc.)
-        import re
-        numbers = re.findall(r'\d+', str(col))
-        if numbers:
-            bin_diameters.append(float(numbers[0]))
-        else:
-            # If no number found, use column index * 5 (assuming 5cm increments)
-            bin_diameters.append((len(bin_diameters)) * 5 + 5)
-    
-    MaxBinId = len(bin_diameters)
-    
-    # Get unique years and categories from the data
-    if 'Year' in df.columns:
-        all_years_list = sorted(df['Year'].unique().tolist())
-    else:
-        all_years_list = [0, 4, 7, 11]
-    
-    # Select every Nth year to reduce clutter - filter by year values, not array indices
-    if year_interval > 1:
-        # Select years that are multiples of the interval
-        years = [year for year in all_years_list if year % year_interval == 0]
-    else:
-        # If interval is 1, use all years
-        years = all_years_list.copy()
-    
-    print(f"All years in data: {all_years_list}")
-    print(f"Selected years (multiples of {year_interval}): {years}")
-    
-    # Convert model years to actual years
-    actual_years = [year + year_start for year in years]
-    print(f"Actual years for display: {actual_years}")
-    
-    categories = sorted(df[category_col].unique()) if category_col in df.columns else ['Branching', 'Foliose', 'Other']
-    
-    # Color schemes for each category
-    color_palette = ["#1F77B4", "#C026D3", "#FF7F0E"]  # blue, fuchsia, orange
-    colors = {}
-    for i, category in enumerate(categories):
-        base_color = color_palette[i % len(color_palette)]
-        colors[category] = {
-            'mean': base_color,
-            'std': base_color + '40'  # Add transparency for std
-        }
-    
-    # Calculate category offsets for parallel display
-    category_offsets = {}
-    if len(categories) == 1:
-        category_offsets[categories[0]] = 0
-    elif len(categories) == 2:
-        category_offsets[categories[0]] = -parallel_offset/2
-        category_offsets[categories[1]] = parallel_offset/2
-    else:  # 3 or more categories
-        for i, cat in enumerate(categories):
-            category_offsets[cat] = (i - (len(categories)-1)/2) * parallel_offset
-    
-    # Prepare data for plotting
-    plot_data = []
-    
-    for category in categories:
-        for model_year in years:  # Use model years for filtering data
-            actual_year = model_year + year_start  # Convert to actual year for positioning
-            # Filter data for this category and model year
-            year_df = df[(df[category_col] == category) & (df['Year'] == model_year)]
-            
-            if not year_df.empty:
-                # Get bin data (columns 2 onwards contain the percentage data)
-                bin_data = year_df.iloc[:, 2:]  # All bin columns
+                perc_pop_size_row = [mg, year] + (100 * population_df[mg] / total_pop).tolist()
+                percentage_population_results.append(perc_pop_size_row)
                 
-                # Calculate mean and std for each bin across all rows for this category/year
-                mean_values = bin_data.mean(axis=0)
-                std_values = bin_data.std(axis=0)
-                
-                # Create data points for each bin using actual bin diameters
-                for bin_idx, (col_name, mean_val, std_val) in enumerate(zip(bin_columns, mean_values, std_values)):
-                    if bin_idx < len(bin_diameters):
-                        # Convert to float and check if valid
-                        try:
-                            mean_val = float(mean_val) if pd.notna(mean_val) else 0
-                            std_val = float(std_val) if pd.notna(std_val) else 0
-                        except (ValueError, TypeError):
-                            mean_val = 0
-                            std_val = 0
-                        
-                        # Always define position variables
-                        x_pos = actual_year + category_offsets[category]  # Use actual year for positioning
-                        y_pos = bin_diameters[bin_idx]  # Use actual bin diameter from column
-                        
-                        if mean_val > 0:
-                            # Add mean point (main bubble)
-                            plot_data.append({
-                                'x': x_pos,
-                                'y': y_pos,
-                                'size': mean_val,
-                                'color': colors[category]['mean'],
-                                'category': category,
-                                'year': actual_year,  # Store actual year
-                                'type': 'mean',
-                                'bin_idx': bin_idx
-                            })
-                        
-                        # Add std point (background shading) if std exists
-                        if std_val > 0:
-                            plot_data.append({
-                                'x': x_pos,
-                                'y': y_pos,
-                                'size': std_val,
-                                'color': colors[category]['std'],
-                                'category': category,
-                                'year': actual_year,  # Store actual year
-                                'type': 'std',
-                                'bin_idx': bin_idx
-                            })
+                # Area DataFrame
+                total_area = reef_area  # Total area in m²
+                perc_area_row = [mg, year] + (100 * surface_area_df[mg] / total_area).tolist()
+                area_results.append(perc_area_row)
     
-    # Create the plot
-    fig, ax = plt.subplots(figsize=(15, 10))
+    # Concatenate all the results into a single DataFrame
+    final_df = pd.concat(final_results)
     
-    # Group data by position for proper std shading around mean
-    position_data = {}
-    for point in plot_data:
-        key = (point['x'], point['y'], point['category'])
-        if key not in position_data:
-            position_data[key] = {'mean': None, 'std': None}
-        position_data[key][point['type']] = point
-    
-    # Plot standard deviation as shading around mean bubbles
-    for (x, y, category), data in position_data.items():
-        if data['mean'] is not None:
-            mean_point = data['mean']
-            
-            # Plot mean bubble
-            ax.scatter(
-                mean_point['x'], 
-                mean_point['y'], 
-                s=float(mean_point['size']) * bubble_scale,  # Ensure float conversion
-                c=mean_point['color'],
-                alpha=0.8,
-                linewidth=0.5,
-                edgecolors='black',
-                zorder=2,
-                label=f'{category}' if mean_point['bin_idx'] == 0 and mean_point['year'] == actual_years[0] else ""
-            )
-            
-            # Plot std shading around the mean if std data exists
-            if data['std'] is not None:
-                std_point = data['std']
-                # Create larger bubble for std shading
-                std_size = float(mean_point['size']) + float(std_point['size'])  # Ensure float conversion
-                
-                ax.scatter(
-                    std_point['x'], 
-                    std_point['y'], 
-                    s=std_size * bubble_scale,  # Use configurable scale factor
-                    c=std_point['color'],
-                    alpha=0.2,  # Very light for background
-                    edgecolors='none',
-                    zorder=1
-                )
-    
-    # Add vertical lines to separate years (optional) - position at actual years
-    if len(actual_years) > 1:
-        for i in range(len(actual_years)-1):
-            separator_x = (actual_years[i] + actual_years[i+1]) / 2
-            ax.axvline(x=separator_x, color='lightgray', linestyle='--', alpha=0.5)
-    
-    # Customize plot appearance
-    ax.set_xlabel('Year', fontsize=14, fontweight='bold')
-    ax.set_ylabel(f'Bin diameter (cm)', fontsize=14, fontweight='bold')
-    
-    # Set x-axis ticks and labels with actual years - more robust approach
-    ax.set_xticks(actual_years)
-    
-    # Create distinct labels for each year
-    year_labels = []
-    for actual_year in actual_years:
-        year_labels.append(str(int(actual_year)))
-    
-    ax.set_xticklabels(year_labels, rotation=0, ha='center')
-    
-    # Force the x-axis to show the full range with proper spacing
-    if len(actual_years) > 1:
-        year_span = max(actual_years) - min(actual_years)
-        margin = max(1, year_span * 0.1)  # 10% margin
-        ax.set_xlim(min(actual_years) - margin, max(actual_years) + margin)
-    else:
-        ax.set_xlim(actual_years[0] - 1, actual_years[0] + 1)
-    
-    # Ensure ticks are visible and properly spaced
-    ax.tick_params(axis='x', labelsize=12)
-    
-    # Update title to reflect actual year range
-    if len(actual_years) > 1:
-        year_range = f"({actual_years[0]}-{actual_years[-1]})"
-    else:
-        year_range = f"({actual_years[0]})"
-    
-    ax.set_title(f'{title} by Category Over Time {year_range}\n(Bubble size represents {title})', fontsize=16, fontweight='bold', pad=20)
-
-# Set y-axis to show actual bin diameters with custom spacing
-    if len(bin_diameters) > 0:
-        ax.set_ylim(min(bin_diameters) - y_spacing, max(bin_diameters) + y_spacing)
-        # Use actual bin diameters for y-axis ticks
-        ax.set_yticks(bin_diameters)
-        ax.set_yticklabels([f'{int(diameter)}' for diameter in bin_diameters]) 
-
-    # Add grid for better readability
-    ax.grid(True, alpha=0.3, linestyle='-', linewidth=0.5)
-    
-    # Create legend
-    legend_elements = []
-    for category in categories:
-        legend_elements.append(plt.Line2D([0], [0], marker='o', color='w', 
-                                        markerfacecolor=colors[category]['mean'], 
-                                        markersize=10, label=f'{category}',
-                                        markeredgecolor='black', markeredgewidth=0.5))
-    
-    # Add legend with better positioning
-    cat_legend = ax.legend(
-    handles=legend_elements,
-    loc='upper right',
-    bbox_to_anchor=(0.99, 1.00),   # (x, y) in axes coords
-    bbox_transform=ax.transAxes,   # interpret bbox in axes coords
-    frameon=True,
-    fancybox=True,
-    shadow=True,
-    fontsize=12
-)
-
-    # Bubble size legend: collect the sizes used for mean bubbles
-    _used_sizes = [p['size'] for p in plot_data if p['type'] == 'mean' and p['size'] > 0]
-
-    if _used_sizes:
-        vmin = float(min(_used_sizes))
-        vmax = float(max(_used_sizes))
-    
-        # dynamic base = 1/5 of max bubble value
-        base = max(vmax / 5.0, 1e-12)
-    
-        # pick 3 representative values between vmin and vmax
-        raw_ticks = np.linspace(vmin, vmax, 3)
-    
-        # --- neat rounding: choose granularity to keep ~3 significant digits ---
-        exp = int(np.floor(np.log10(base)))         # order of magnitude of base
-        gran = 10 ** max(exp - 2, 0)                # e.g. base=17729 -> exp=4 -> gran=10**2=100
-    
-        # snap to nearest multiple of gran
-        tick_vals = np.round(raw_ticks / gran) * gran
-        tick_vals = np.array(sorted(set(tick_vals)))
-        tick_vals[tick_vals <= 0] = gran  # avoid zero-size markers
-    
-        # fallback if rounding collapsed distincts
-        if tick_vals.size < 3:
-            mids = [vmin, (vmin + vmax)/2.0, vmax]
-            tick_vals = np.array(sorted(set(np.round(np.array(mids)/gran) * gran)))
-            tick_vals[tick_vals <= 0] = gran
-
-    # build legend handles with SAME size mapping (s = value * bubble_scale)
-    size_handles = [
-        ax.scatter([], [], s=float(val) * bubble_scale, color='black', alpha=0.35, edgecolors='black')
-        for val in tick_vals
-    ]
-
-    # pretty labels: integers with commas when gran >= 1; otherwise sensible decimals
-    def _fmt(v):
-        if gran >= 1:
-            return f"{int(v):,}"
-        # decimals: number of places based on gran (e.g., gran=0.01 -> 2 dp)
-        places = max(0, int(np.ceil(-np.log10(gran))))
-        return f"{v:.{places}f}"
-        
-    size_labels = [_fmt(val) for val in tick_vals]
-
-    size_legend = ax.legend(
-        size_handles, size_labels,
-        title=f"{title} scale",
-        loc="upper right",
-        bbox_to_anchor=(0.99, 0.89),      # same x, lower y (under the category legend)
-        bbox_transform=ax.transAxes,
-        frameon=True, fancybox=True, shadow=False,
-        fontsize=11,
-        title_fontsize=12,
-        borderpad=1.4,      # ↑ makes the legend box itself roomier
-        labelspacing=1.5,
-        handlelength=2.2,
-        handletextpad=0.8,
-        borderaxespad=0.0
-)
-    # keep both legends
-    ax.add_artist(cat_legend)
-
-    # Define the graph directory path
-    graph_dir = r'output/figures'
-
-    # Save the combined plot to the specified folder
-    graph_path = os.path.join(graph_dir, f'{title} bubble_graph.png')
-    plt.savefig(graph_path)
-
-    # Adjust layout and display
-    plt.tight_layout()
-    plt.show()
-    
-    
-    return fig, ax
+    return final_df, population_results, percentage_population_results, area_results
 
 def get_relative_increase_coral_cover(old_coral_cover, new_coral_cover):
     """
@@ -1718,8 +1456,16 @@ def get_rugosity_list():
 
 def plot_rugosity_year():
     """
-    Plot the rugosity values over actual calendar years.
-    Uses global year_start and get_rugosity_list().
+    Plot the rugosity values over the years.
+
+    Parameters
+    ----------
+    None
+
+    Returns
+    -------
+    None
+
     """
     rugosity_list = get_rugosity_list()                 # length should be MaxYear+1
     years = np.arange(year_start, year_start + len(rugosity_list))
@@ -1736,7 +1482,6 @@ def plot_rugosity_year():
     plot_file = os.path.join(output_folder, 'rugosity_year.svg')
     fig.savefig(plot_file, format='svg', bbox_inches='tight')
     plt.show()
-    
 
 def plot_rugosity_total_coral_cover():
     """
@@ -2171,11 +1916,6 @@ def output_title(base: str, iteration: int, separator: str = "_", zero_pad: int 
     num = str(int(iteration)).zfill(zero_pad) if zero_pad > 0 else str(int(iteration))
     return f"{base}{separator}{num}"
 
-
-import os, re
-from datetime import datetime
-from zoneinfo import ZoneInfo  # Python 3.9+
-
 #create ID that includes current date
 def make_run_id(folder: str, tz: str = "Australia/Brisbane", width: int = 2) -> str:
     """Return a run id like 'YYYYMMDD_01', 'YYYYMMDD_02', ..."""
@@ -2250,3 +1990,285 @@ def fill_nans_columnwise(df, year_col: str | None = 'Year',
         created_mask[c] = orig_nan[c] & out[c].notna()
 
     return out, created_mask
+
+def plot_bubble_chart_from_dataframe(df, title, category_col='MG', selected_years=None, 
+                                     bubble_scale=100, parallel_offset=0.3, 
+                                     figsize=(18, 12), y_spacing=5,
+                                     title_fontsize=20, label_fontsize=16, tick_fontsize=14, 
+                                     legend_fontsize=12):
+    """
+    Create a bubble chart showing population distribution by category over time.
+    
+    Parameters:
+    - df: DataFrame with columns for category, year, and bin data (percentages)
+    - title: Chart title
+    - category_col: Column name for categories (default: 'MG')
+    - selected_years: List of actual years to plot (e.g., [2000, 2004, 2008, 2012]) or None for all years
+    - bubble_scale: Multiplier for bubble sizes (default: 100)
+    - parallel_offset: Horizontal offset between categories as fraction of year gap (default: 0.3)
+    - figsize: Figure size tuple (default: (18, 12))
+    - y_spacing: Extra spacing for y-axis limits (default: 5)
+    - title_fontsize: Font size for title (default: 20)
+    - label_fontsize: Font size for axis labels (default: 16)
+    - tick_fontsize: Font size for tick labels (default: 14)
+    - legend_fontsize: Font size for legends (default: 12)
+    
+    Expected DataFrame structure:
+    - Column 0: Category (MG)
+    - Column 1: Year (model years: 0, 1, 2, 3, ...)
+    - Columns 2+: Bin diameter columns (5, 10, 15, ..., 100) with percentages
+    """
+ 
+    # Get bin columns and extract diameters
+    bin_columns = df.columns[2:].tolist()
+    bin_diameters = []
+    for col in bin_columns:
+        numbers = re.findall(r'\d+', str(col))
+        if numbers:
+            bin_diameters.append(float(numbers[0]))
+        else:
+            bin_diameters.append(len(bin_diameters) * 5 + 5)
+    
+    # Get years to plot - year_start is assumed to be defined elsewhere
+    all_model_years = sorted(df['Year'].unique()) if 'Year' in df.columns else [0, 4, 7, 11]
+    all_actual_years = [year + year_start for year in all_model_years]
+    
+    if selected_years is not None:
+        # Convert selected actual years to model years
+        selected_model_years = [year - year_start for year in selected_years]
+        # Use only the model years that exist in the data
+        years = [year for year in selected_model_years if year in all_model_years]
+        actual_years = [year + year_start for year in years]
+    else:
+        years = all_model_years
+        actual_years = all_actual_years
+        print("Using all available years:")
+        print(f"Model years: {years}")
+        print(f"Actual years: {actual_years}")
+    
+    categories = sorted(df[category_col].unique()) if category_col in df.columns else ['Branching', 'Foliose', 'Other']
+    
+    # Color scheme
+    color_palette = ["#1F77B4", "#C026D3", "#FF7F0E"]
+    colors = {cat: color_palette[i % len(color_palette)] for i, cat in enumerate(categories)}
+    
+    # Initial category offsets (will be refined after we know bubble sizes)
+    if len(categories) == 1:
+        category_offsets = {categories[0]: 0}
+    else:
+        category_offsets = {cat: (i - (len(categories)-1)/2) * parallel_offset 
+                          for i, cat in enumerate(categories)}
+    
+    # Prepare plot data
+    plot_data = []
+    for category in categories:
+        for model_year in years:
+            actual_year = model_year + year_start
+            year_df = df[(df[category_col] == category) & (df['Year'] == model_year)]
+            
+            if not year_df.empty:
+                bin_data = year_df.iloc[:, 2:]
+                mean_values = bin_data.mean(axis=0)
+                std_values = bin_data.std(axis=0)
+                
+                for bin_idx, (col_name, mean_val, std_val) in enumerate(zip(bin_columns, mean_values, std_values)):
+                    if bin_idx < len(bin_diameters) and pd.notna(mean_val) and mean_val > 0:
+                        x_pos = actual_year + category_offsets[category]
+                        y_pos = bin_diameters[bin_idx]
+                        
+                        plot_data.append({
+                            'x': x_pos, 'y': y_pos, 'size': float(mean_val),
+                            'category': category, 'year': actual_year,
+                            'std': float(std_val) if pd.notna(std_val) else 0
+                        })
+    
+    # Recalculate category offsets based on actual bubble sizes
+    if len(categories) > 1 and plot_data:
+        if len(actual_years) > 1:
+            min_year_gap = min(actual_years[i+1] - actual_years[i] for i in range(len(actual_years)-1))
+            
+            # Calculate maximum bubble size for adaptive scaling
+            max_bubble_size = max(point['size'] for point in plot_data)
+            # Estimate bubble radius in data coordinates
+            bubble_radius_estimate = (max_bubble_size * bubble_scale) ** 0.5 / 200
+            # Ensure minimum separation to prevent overlap
+            min_separation = max(parallel_offset, bubble_radius_estimate * 2.5)
+            effective_offset = min(min_separation, min_year_gap * 0.3)
+        else:
+            effective_offset = parallel_offset
+            
+        # Recalculate offsets with better spacing
+        category_offsets = {cat: (i - (len(categories)-1)/2) * effective_offset 
+                          for i, cat in enumerate(categories)}
+        
+        # Update x positions in plot_data
+        for point in plot_data:
+            point['x'] = point['year'] + category_offsets[point['category']]
+    
+    # Create plot
+    fig, ax = plt.subplots(figsize=figsize)
+    
+    # Plot bubbles
+    for point in plot_data:
+        # Plot std shading (larger, transparent bubble)
+        if point['std'] > 0:
+            ax.scatter(point['x'], point['y'], 
+                      s=(point['size'] + point['std']) * bubble_scale,
+                      c=colors[point['category']], alpha=0.2, 
+                      edgecolors='none', zorder=1)
+        
+        # Plot mean bubble
+        ax.scatter(point['x'], point['y'], s=point['size'] * bubble_scale,
+                  c=colors[point['category']], alpha=0.8, 
+                  linewidth=0.5, edgecolors='black', zorder=2)
+    
+    # Add year separator lines
+    if len(actual_years) > 1:
+        for i in range(len(actual_years)-1):
+            separator_x = (actual_years[i] + actual_years[i+1]) / 2
+            ax.axvline(x=separator_x, color='lightgray', linestyle='--', alpha=0.5)
+    
+    # Customize axes
+    ax.set_xlabel('Year', fontsize=label_fontsize, fontweight='bold')
+    ax.set_ylabel('Bin diameter (cm)', fontsize=label_fontsize, fontweight='bold')
+    
+    # Set x-axis with shoulder margins equal to year gaps
+    ax.set_xticks(actual_years)
+    ax.set_xticklabels([str(int(year)) for year in actual_years])
+    
+    if len(actual_years) > 1:
+        # Calculate the actual gap between consecutive years
+        min_year_gap = min(actual_years[i+1] - actual_years[i] for i in range(len(actual_years)-1))
+        
+        # The expansion factor creates gaps between years
+        expansion_factor = 0.15  # 15% as before
+        year_gap_size = min_year_gap * expansion_factor
+        
+        # Use the same gap size for shoulder margins
+        shoulder_margin = year_gap_size
+        
+        # Apply expansion to create year gaps, but use calculated shoulder margins
+        year_span = max(actual_years) - min(actual_years)
+        expanded_span = year_span * (1 + expansion_factor)
+        center = (min(actual_years) + max(actual_years)) / 2
+        
+        ax.set_xlim(center - expanded_span/2 - shoulder_margin, 
+                   center + expanded_span/2 + shoulder_margin)
+    else:
+        # For single year, use a reasonable default
+        ax.set_xlim(actual_years[0] - 0.5, actual_years[0] + 0.5)
+    
+    # Set tick label sizes
+    ax.tick_params(axis='x', labelsize=tick_fontsize)
+    ax.tick_params(axis='y', labelsize=tick_fontsize)
+    
+    # Set y-axis
+    if bin_diameters:
+        ax.set_ylim(min(bin_diameters) - y_spacing, max(bin_diameters) + y_spacing)
+        ax.set_yticks(bin_diameters)
+        ax.set_yticklabels([f'{int(d)}' for d in bin_diameters], fontsize=tick_fontsize)
+    
+    # Title
+    year_range = f"({actual_years[0]}-{actual_years[-1]})" if len(actual_years) > 1 else f"({actual_years[0]})"
+    ax.set_title(f'{title} by Category Over Time {year_range}\n(Bubble size represents {title})', 
+                fontsize=title_fontsize, fontweight='bold', pad=20)
+    
+    # Grid
+    ax.grid(True, alpha=0.3, linestyle='-', linewidth=0.5)
+    
+    # Create legends outside plot area
+    # Category legend with larger markers
+    category_handles = [plt.Line2D([0], [0], marker='o', color='w', 
+                                  markerfacecolor=colors[cat], markersize=30,  # Increased from 20 to 30
+                                  markeredgecolor='black', markeredgewidth=0.5)
+                       for cat in categories]
+    
+    cat_legend = ax.legend(category_handles, categories, title='Categories',
+                          bbox_to_anchor=(1.02, 1), loc='upper left',
+                          frameon=True, fancybox=True, shadow=True, 
+                          fontsize=legend_fontsize, title_fontsize=legend_fontsize+2,
+                          labelspacing=1.2, handlelength=2.0, 
+                          handletextpad=1.0, borderpad=1.2)
+    
+    # Size legend
+    sizes = [p['size'] for p in plot_data if p['size'] > 0]
+    if sizes:
+        vmin, vmax = min(sizes), max(sizes)
+        
+        # Always create exactly 3 distinct values: small, middle, and large
+        if vmax > vmin:
+            # Small: 10th percentile value (avoids zeros)
+            small_val = np.percentile(sizes, 10)
+            
+            # Large: actual maximum value
+            large_val = vmax  
+            
+            # Middle: halfway between small and large
+            middle_val = (small_val + large_val) / 2
+            
+            tick_vals = np.array([small_val, middle_val, large_val])
+            
+            tick_vals = np.array([small_val, middle_val, large_val])
+            
+            # Simple rounding to avoid too many decimals
+            if vmax >= 1000:
+                tick_vals = np.round(tick_vals, -1)  # Round to nearest 10
+            elif vmax >= 100:
+                tick_vals = np.round(tick_vals, 0)   # Round to nearest 1
+            elif vmax >= 10:
+                tick_vals = np.round(tick_vals, 1)   # Round to 1 decimal
+            else:
+                tick_vals = np.round(tick_vals, 2)   # Round to 2 decimals
+            
+            # Ensure all values are distinct and positive
+            tick_vals = tick_vals[tick_vals > 0]
+            tick_vals = np.unique(tick_vals)
+            
+            # If we lost values due to rounding, spread them out manually
+            if len(tick_vals) < 3:
+                tick_vals = np.array([vmin, (vmin + large_val) / 2, large_val])
+                if vmax >= 100:
+                    tick_vals = np.round(tick_vals, 0)
+                else:
+                    tick_vals = np.round(tick_vals, 1)
+        else:
+            # All values are the same
+            tick_vals = np.array([vmin])
+        
+        # Create legend bubbles that match the actual plot bubble sizes exactly
+        size_handles = [ax.scatter([], [], s=val * bubble_scale, color='black', 
+                                  alpha=0.6, edgecolors='black') for val in tick_vals]
+        
+        # Format labels based on value range
+        if np.max(tick_vals) >= 1000:
+            size_labels = [f"{int(val):,}" for val in tick_vals]
+        elif np.max(tick_vals) >= 100:
+            size_labels = [f"{int(val)}" for val in tick_vals]
+        elif np.max(tick_vals) >= 1:
+            size_labels = [f"{val:.1f}" for val in tick_vals]
+        else:
+            size_labels = [f"{val:.2f}" for val in tick_vals]
+        
+        size_legend = ax.legend(size_handles, size_labels, title=f"{title} Scale",
+                               bbox_to_anchor=(1.02, 0.65), loc='upper left',
+                               frameon=True, fancybox=True, 
+                               fontsize=legend_fontsize, title_fontsize=legend_fontsize+2,
+                               labelspacing=2.0, handlelength=3.0, 
+                               handletextpad=1.2, borderpad=1.5,
+                               columnspacing=1.0)
+        
+        # Keep both legends
+        ax.add_artist(cat_legend)
+    
+    # Adjust layout to accommodate external legends
+    plt.tight_layout()
+    plt.subplots_adjust(right=0.85)
+    
+    # Save plot
+    graph_dir = 'output/figures'
+    os.makedirs(graph_dir, exist_ok=True)
+    graph_path = os.path.join(graph_dir, f'{title}_bubble_graph.png')
+    plt.savefig(graph_path, bbox_inches='tight', dpi=300, facecolor='white')
+    plt.show()
+    
+    return fig, ax
