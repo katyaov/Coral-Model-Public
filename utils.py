@@ -1123,10 +1123,6 @@ def run_yearly_change(PSD_df, Years):
 		else:
 			opts.current_cyc = [0, 0]
 
-
-
-
-		
 		
 		###Rio 
 		
@@ -1631,7 +1627,7 @@ def plot_rugosity_total_coral_cover():
 	plt.show()
 	
 	
-
+############# I thought maybe i need to move this to config but then it doesnt run 
 def create_dhw_list(dhw_years):
 	"""
 	Create a list of degree heating week values given a dictionary of year-temperature pairs.
@@ -1797,7 +1793,7 @@ def get_PCM_rates_after_dhw(PCM_rates, dhw, branching_bleaching_rate, foliose_bl
 									)
 	return pcm_rates_dhw
 
-###Rio lets try this 
+###Rio - add if sediment exposure is enabled run these functions
 def get_PCM_rates_after_DS_exp(PCM_rates, add_sedi_exp_per_year, year, sedi_exp_PCM_coeff):
     """
     Calculate updated Partial Colony Mortality (PCM) rates for each coral type based on deposited sediment exposure.
@@ -1825,39 +1821,78 @@ def get_PCM_rates_after_DS_exp(PCM_rates, add_sedi_exp_per_year, year, sedi_exp_
         adjusted_rates = []
         for base_rate in PCM_rates[coral_type]:
             # Ensure PCM is always between 0 and 1
-            adjusted_rate = base_rate + coeff * add_deposited_sediment
+            adjusted_rate = base_rate + (base_rate* coeff * add_deposited_sediment* sediment_susceptibility)
             adjusted_rate = max(0, min(adjusted_rate, 1))
             adjusted_rates.append(adjusted_rate)
         pcm_rates_ds[coral_type] = adjusted_rates
 
     return pcm_rates_ds
 
-def get_GR_after_ss(current_add_suspended_sediment, gr_sedi_sus_coeff):
-	"""
-	Calculate the growth rate after considering the effect of suspended sediment.
-	Parameters:
-	-----------
-	current_add_suspended_sediment : float
-		The current amount of added suspended sediment.
-	gr_sedi_sus_coeff : dict
-		A dictionary containing the growth rate coefficients for each coral type.
-	Returns:
-	--------
-	growth_rate_ss : dict
-		A dictionary containing the updated growth rates for each coral type after considering the effect of suspended sediment.
-	Notes:
-	------
-	This function calculates the growth rate for each coral type (Branching, Foliose, Other) after considering the effect of suspended sediment.
-	The growth rate is adjusted based on the amount of suspended sediment and the corresponding growth rate coefficient for each coral type.
-	The calculations are performed using an exponential decay function.
-	"""
+# def get_GR_after_ss(current_add_suspended_sediment, gr_sedi_sus_coeff):
+# 	"""
+# 	Calculate the growth rate after considering the effect of suspended sediment.
+# 	Parameters:
+# 	-----------
+# 	current_add_suspended_sediment : float
+# 		The current amount of added suspended sediment.
+# 	gr_sedi_sus_coeff : dict
+# 		A dictionary containing the growth rate coefficients for each coral type.
+# 	Returns:
+# 	--------
+# 	growth_rate_ss : dict
+# 		A dictionary containing the updated growth rates for each coral type after considering the effect of suspended sediment.
+# 	Notes:
+# 	------
+# 	This function calculates the growth rate for each coral type (Branching, Foliose, Other) after considering the effect of suspended sediment.
+# 	The growth rate is adjusted based on the amount of suspended sediment and the corresponding growth rate coefficient for each coral type.
+# 	The calculations are performed using an exponential decay function.
+# 	"""
 
-	if not enable_sediment_exposure:
-		return growth_rate
+# 	if not enable_sediment_exposure:
+# 		return growth_rate
 
-	else:
-		growth_rate_ss = {i: growth_rate[i] * np.exp(-gr_sedi_sus_coeff[i] * current_add_suspended_sediment) for i in coral_type}
-		return growth_rate_ss
+# 	else:
+# 		growth_rate_ss = {i: growth_rate[i] * np.exp(-gr_sedi_sus_coeff[i] * current_add_suspended_sediment) for i in coral_type}
+# 		return growth_rate_ss
+
+def get_GR_after_ss(growth_rate, add_sedi_exp_per_year, year, sedi_exp_growth_coeff):
+    """
+    Calculate the growth rate after considering the effect of suspended sediment for each coral type and bin,
+    returning a DataFrame similar to get_PCM_rates_after_DS_exp.
+
+    Parameters:
+    -----------
+    growth_rate : pd.DataFrame
+        The base growth rates for each coral type and bin.
+    add_sedi_exp_per_year : dict
+        Dictionary with keys as year indices and values as (suspended, deposited) tuples.
+    year : int
+        The current year index.
+    sedi_exp_growth_coeff : dict
+        Growth rate coefficients for each coral type.
+
+    Returns:
+    --------
+    growth_rate_ss : pd.DataFrame
+        DataFrame with updated growth rates for each coral type and bin after considering suspended sediment.
+    """
+    import pandas as pd
+
+    growth_rate_ss = pd.DataFrame(columns=growth_rate.columns)
+    add_suspended_sediment = add_sedi_exp_per_year.get(year, (0, 0))[0]
+
+    for coral in growth_rate.columns:
+        coeff = sedi_exp_growth_coeff.get(coral, 0)
+        adjusted_rates = []
+        for base_rate in growth_rate[coral]:
+            # Incorporate sediment_susceptibility if needed
+            adjusted_rate = base_rate - (base_rate * (coeff * add_suspended_sediment * sediment_susceptibility))
+			#adjusted_rate = base_rate - (base_rate * (coeff * add_suspended_sediment * sediment_susceptibility/100))
+            adjusted_rate = max(0, min(adjusted_rate, base_rate))
+            adjusted_rates.append(adjusted_rate)
+        growth_rate_ss[coral] = adjusted_rates
+
+    return growth_rate_ss
 
 
 def get_WCM_rates_after_cyclones(WCM_rates, cyclone_severity_level, distance_to_cyclone):
@@ -1916,7 +1951,7 @@ def get_WCM_rates_after_cyclones(WCM_rates, cyclone_severity_level, distance_to_
 		
 		return wcm_rates_cyc
 
-
+###########################################
 
 def split_w(x, y, z, t, w):
 	"""

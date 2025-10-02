@@ -282,10 +282,6 @@ else:
 
 
 
-
-
-
-
 #sediment exposure partial mortality relationships for each morphology 
 sedi_exp_PCM_coeff = {
     'Branching': 0.3296,
@@ -313,6 +309,296 @@ sedi_exp_fertilisation_coeff = {
     'spawner': -0.6232,
     'brooder': 1   # this is a placeholder, as brooder fertilisation is not affected by sediment exposure  
 }
+
+#applied sediment coefficients 
+
+###RIO MOVE IN FROM UTILS
+
+def create_dhw_list(dhw_years):
+	"""
+	Create a list of degree heating week values given a dictionary of year-temperature pairs.
+	If the temperature at a given year is 0, take two-thirds of the temperature of the previous year.
+	Otherwise, take the temperature as it is given.
+
+	Parameters
+	----------
+	dhw_years : dict
+		A dictionary of year-temperature pairs.
+
+	Returns
+	-------
+	list
+		A list of degree heating week values.
+
+	"""
+	dhw_lst = [0] * (MaxYear+1)  # create a list of zeros length equals to MaxYear
+	for year, temperature in dhw_years.items():
+		dhw_lst[int(year)] = temperature  # set the temperature at the corresponding year index
+	
+	for i in range(len(dhw_lst)):
+		if dhw_lst[i] == 0:
+			if i == 0:
+				dhw_lst[i] = dhw_lst[0]
+			else:
+				dhw_lst[i] = int(2*dhw_lst[i-1]/3)
+	
+	return dhw_lst
+
+
+def create_cyclone_list(cyc_years):
+	"""
+	Create a cyclone list based on the given cyclone years, severity and distances.
+
+	Parameters
+	----------
+	cyc_years : dict
+		A dictionary containing cyclone years as keys and severity and distances as values.
+
+	Returns
+	-------
+	numpy.ndarray
+		An array representing the cyclone list where each index corresponds to a year.
+		If no cyclone data is available for a particular year, the corresponding entry is set to [0, 0].
+
+	Notes
+	-----
+	The cyclone list is created by initializing an array of zeros with a length equal to `MaxYear`.
+	The severity distances for each cyclone year are then inserted at the corresponding index in the list.
+	If no cyclone data is available for a particular year, the entry is set to [0, 0].
+	"""
+	
+	cyc_lst = [0] * (MaxYear+1)  # create a list of zeros length equals to MaxYear
+	for year, severity_distance in cyc_years.items():
+		cyc_lst[int(year)] = severity_distance  # set the temperature at the corresponding year index
+	
+	for i in range(len(cyc_lst)):
+		if cyc_lst[i] == 0:
+			cyc_lst[i] = [0,0]
+			
+	return cyc_lst
+
+# ###Rio create  ds list 
+# def create_deposited_sediment_list(add_sedi_exp_per_year):
+#     """
+#     Create a list of additional deposited sediment values per year.
+
+#     Parameters
+#     ----------
+#     add_sedi_exp_per_year : dict
+#         A dictionary with keys as relative year indices and values as (suspended, deposited) tuples.
+
+#     Returns
+#     -------
+#     list
+#         A list where each index corresponds to a year and contains the additional deposited sediment value.
+#         If no data is available for a particular year, the entry is set to 0.
+
+#     Notes
+#     -----
+#     The list is created by initializing an array of zeros with a length equal to MaxYear+1.
+#     The deposited sediment values for each year are then inserted at the corresponding index in the list.
+#     """
+#     deposited_lst = [0] * (MaxYear + 1)
+#     for year, (suspended, deposited) in add_sedi_exp_per_year.items():
+#         deposited_lst[int(year)] = deposited  # set the deposited sediment at the corresponding year index
+
+#     return deposited_lst
+
+# def eggs_decline_rate(dhw):
+# 	"""
+# 	Calculates the egg decline rate based on the degree heating weeks (DHW).
+
+# 	Parameters
+# 	----------
+# 	dhw : integer
+# 		The degree heating weeks (DHW) value.
+
+# 	Returns
+# 	-------
+# 	float
+# 		The egg decline rate.
+
+# 	"""
+# 	return 1 - 1 / (1 + eggs_decline_coefficient*np.exp(4-dhw))
+
+# def colonies_spawning_decline_rate(dhw):
+# 	"""
+# 	Calculate the decline rate of colonies spawning as a function of degree heating weeks (DHW).
+
+# 	Parameters
+# 	----------
+# 	dhw : integer
+# 		The degree heating weeks.
+
+# 	Returns
+# 	-------
+# 	float
+# 		The decline rate of colonies spawning.
+
+# 	"""
+# 	return 1 - 1 / (1 + colonies_spawning_decline_coefficient * np.exp(4 - dhw))
+
+
+
+# def get_PCM_rates_after_dhw(PCM_rates, dhw, branching_bleaching_rate, foliose_bleaching_rate, other_bleaching_rate):
+# 	"""
+# 	Calculate the PCM rates for each coral growth form given the degree heating weeks (DHW).
+
+# 	Parameters
+# 	----------
+# 	PCM_rates : pandas DataFrame
+# 		A DataFrame containing the PCM rates for each coral growth form and bin id.
+# 	dhw : integer
+# 		The degree heating weeks (DHW) value for the given year.
+
+# 	Returns
+# 	-------
+# 	pandas DataFrame
+# 		A DataFrame containing the updated PCM rates for each coral growth form and bin id based on the given DHW value.
+# 	"""
+	
+# 	# compute the array of A values
+# 	A = np.array([0.5*2**(i/(MaxBinId-1)) for i in range(MaxBinId)])
+# 	# compute the exponential term
+# 	exp_term = np.exp(4 - A * dhw)
+	
+# 	branching_bleaching_rate *= 1.05**(opts.dhw_counter-1)
+# 	foliose_bleaching_rate *= 1.05**(opts.dhw_counter-1)
+# 	other_bleaching_rate *= 1.05**(opts.dhw_counter-1)
+	
+# 	if growthOnly:
+# 		pcm_rates_dhw = WCM_rates
+# 	else:
+# 		# compute the PCM rates for each coral growth form and bin id
+# 		pcm_rates_dhw = pd.DataFrame(
+# 									{
+# 										'Branching': [(1 - PCM_rates['Branching'][j]) / (1 + branching_bleaching_rate*exp_term[j]) + PCM_rates['Branching'][j] for j in range(MaxBinId)],
+# 										'Foliose': [(1 - PCM_rates['Foliose'][j]) / (1 + foliose_bleaching_rate*exp_term[j]) + PCM_rates['Foliose'][j] for j in range(MaxBinId)],
+# 										'Other': [(1 - PCM_rates['Other'][j]) / (1 + other_bleaching_rate*exp_term[j]) + PCM_rates['Other'][j] for j in range(MaxBinId)],
+# 									}
+# 									)
+# 	return pcm_rates_dhw
+
+# ###Rio lets try this 
+# def get_PCM_rates_after_DS_exp(PCM_rates, add_sedi_exp_per_year, year, sedi_exp_PCM_coeff):
+#     """
+#     Calculate updated Partial Colony Mortality (PCM) rates for each coral type based on deposited sediment exposure.
+#     Ensures PCM rates are clipped between 0 and 1.
+
+#     This version uses a linear relationship:
+#         new_rate = base_rate + (coefficient x additional deposited_sediment)
+
+#     Parameters:
+#     - PCM_rates: pd.DataFrame with columns ['Branching', 'Foliose', 'Other'] representing base PCM rates.
+#     - add_sedi_exp_per_year: dict with keys as relative year indices and values as (suspended, deposited) tuples.
+#     - year: int, relative year index (e.g., 0 for 2005).
+#     - sedi_exp_PCM_coeff: dict with linear coefficients for each coral type.
+
+#     Returns:
+#     - updated_PCM_rates: pd.DataFrame with adjusted PCM rates.
+#     """
+#     import pandas as pd
+
+#     pcm_rates_ds = pd.DataFrame(columns=PCM_rates.columns)
+#     add_deposited_sediment = add_sedi_exp_per_year.get(year, (0, 0))[1]
+
+#     for coral_type in PCM_rates.columns:
+#         coeff = sedi_exp_PCM_coeff.get(coral_type, 0)
+#         adjusted_rates = []
+#         for base_rate in PCM_rates[coral_type]:
+#             # Ensure PCM is always between 0 and 1
+#             adjusted_rate = base_rate + coeff * add_deposited_sediment
+#             adjusted_rate = max(0, min(adjusted_rate, 1))
+#             adjusted_rates.append(adjusted_rate)
+#         pcm_rates_ds[coral_type] = adjusted_rates
+
+#     return pcm_rates_ds
+
+# def get_GR_after_ss(current_add_suspended_sediment, gr_sedi_sus_coeff):
+# 	"""
+# 	Calculate the growth rate after considering the effect of suspended sediment.
+# 	Parameters:
+# 	-----------
+# 	current_add_suspended_sediment : float
+# 		The current amount of added suspended sediment.
+# 	gr_sedi_sus_coeff : dict
+# 		A dictionary containing the growth rate coefficients for each coral type.
+# 	Returns:
+# 	--------
+# 	growth_rate_ss : dict
+# 		A dictionary containing the updated growth rates for each coral type after considering the effect of suspended sediment.
+# 	Notes:
+# 	------
+# 	This function calculates the growth rate for each coral type (Branching, Foliose, Other) after considering the effect of suspended sediment.
+# 	The growth rate is adjusted based on the amount of suspended sediment and the corresponding growth rate coefficient for each coral type.
+# 	The calculations are performed using an exponential decay function.
+# 	"""
+
+# 	if not enable_sediment_exposure:
+# 		return growth_rate
+
+# 	else:
+# 		growth_rate_ss = {i: growth_rate[i] * np.exp(-gr_sedi_sus_coeff[i] * current_add_suspended_sediment) for i in coral_type}
+# 		return growth_rate_ss
+
+
+# def get_WCM_rates_after_cyclones(WCM_rates, cyclone_severity_level, distance_to_cyclone):
+# 	"""
+# 	Calculate the WCM rates during cyclone events.
+
+# 	Parameters:
+# 	-----------
+# 	WCM_rates : DataFrame
+# 		The WCM rates for branching, foliose, and other coral types.
+# 	cyclone_severity_level : float
+# 		The severity level of the cyclone event.
+# 	distance_to_cyclone : float
+# 		The distance to the cyclone event.
+
+# 	Returns:
+# 	--------
+# 	wcm_rates_cyc : DataFrame
+# 		The updated WCM rates during cyclone events.
+
+# 	Notes:
+# 	------
+# 	This function calculates the WCM rates for branching, foliose, and other coral types during cyclone events.
+# 	The WCM rates are adjusted based on the severity level of the cyclone and the distance to the cyclone event.
+# 	The calculations are performed using exponential decay functions.
+
+# 	"""
+# 	if not cyclone:
+# 		return WCM_rates
+	
+# 	else:
+# 		cyclone_severity_level = cyclone_severity_level*2
+
+
+# 		# Fix: Create arrays that match MaxBinId exactly
+# 		pp = np.linspace(1, MaxBinId+1, MaxBinId)  # Ensures length = MaxBinId
+# 		bins = np.array([p*cyclone_bin_coefficient for p in pp])
+		
+# 		exp_term_branching = cyclone_severity_level*np.exp(-distance_to_cyclone/bins/cyclone_bin_coefficient)
+# 		exp_term_foliose = cyclone_severity_level*np.exp(-distance_to_cyclone/bins/cyclone_bin_coefficient)
+# 		exp_term_other = cyclone_severity_level*np.exp(-distance_to_cyclone/bins/cyclone_bin_coefficient)
+
+
+# 		# wcm_rates_cyc = pd.DataFrame(
+# 		# 								{
+# 		# 									'Branching': [1 - 1 / (1 + branching_cyclone_coefficient * exp_term_branching[j]) + WCM_rates['Branching'][j] for j in range(MaxBinId)],
+# 		# 									'Foliose': [1 - 1 / (1 + foliose_cyclone_coefficient * exp_term_foliose[j]) + WCM_rates['Foliose'][j] for j in range(MaxBinId)],
+# 		# 									'Other': [1 - 1 / (1 + other_cyclone_coefficient * exp_term_other[j]) + WCM_rates['Other'][j] for j in range(MaxBinId)],
+# 		# 								}
+# 		# 								)
+# 		wcm_rates_cyc = pd.DataFrame({
+#             'Branching': [1 - 1 / (1 + branching_cyclone_coefficient * exp_term_branching[j]) + WCM_rates['Branching'][j] for j in range(MaxBinId)],
+#             'Foliose': [1 - 1 / (1 + foliose_cyclone_coefficient * exp_term_foliose[j]) + WCM_rates['Foliose'][j] for j in range(MaxBinId)],
+#             'Other': [1 - 1 / (1 + other_cyclone_coefficient * exp_term_other[j]) + WCM_rates['Other'][j] for j in range(MaxBinId)],
+#         })
+		
+# 		return wcm_rates_cyc
+
+# ### end of moved in from utils
 
 
 
