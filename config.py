@@ -88,9 +88,9 @@ binSize = PSD_T0['Bins'][0] # bin size in cm
 
 if not use_custom_partial_mortality_rate:
     #per bin size 5-95
-    partial_mortality_rates_branching = [1.63, 1.91, 2.19, 2.47, 2.75, 3.03, 3.30, 3.58, 3.86, 4.14, 4.42, 4.70, 4.98, 5.25, 5.53, 5.81, 6.09, 6.37, 6.65, 6.75]
-    partial_mortality_rates_foliose = [1.17, 1.36, 1.56, 1.76, 1.96, 2.16, 2.36, 2.56, 2.76, 2.96, 3.16, 3.35, 3.55, 3.75, 3.95, 4.15, 4.35, 4.55, 4.75, 4.8]
-    partial_mortality_rates_other = [1.17, 1.36, 1.56, 1.76, 1.96, 2.16, 2.36, 2.56, 2.76, 2.96, 3.16, 3.35, 3.55, 3.75, 3.95, 4.15, 4.35, 4.55, 4.75, 4.8]
+    partial_mortality_rates_branching = [0.0163, 0.0191, 0.0219, 0.0247, 0.0275, 0.0303, 0.0330, 0.0358, 0.0386, 0.0414, 0.0442, 0.0470, 0.0498, 0.0525, 0.0553, 0.0581, 0.0609, 0.0637, 0.0665, 0.0675]
+    partial_mortality_rates_foliose = [0.0117, 0.0136, 0.0156, 0.0176, 0.0196, 0.0216, 0.0236, 0.0256, 0.0276, 0.0296, 0.0316, 0.0335, 0.0355, 0.0375, 0.0395, 0.0415, 0.0435, 0.0455, 0.0475, 0.048]
+    partial_mortality_rates_other = [0.0117, 0.0136, 0.0156, 0.0176, 0.0196, 0.0216, 0.0236, 0.0256, 0.0276, 0.0296, 0.0316, 0.0335, 0.0355, 0.0375, 0.0395, 0.0415, 0.0435, 0.0455, 0.0475, 0.048]
 else:
     if len(custom_partial_mortality_rates_branching) != MaxBinId or len(custom_partial_mortality_rates_foliose) != MaxBinId or len(custom_partial_mortality_rates_other) != MaxBinId:
         raise ValueError(f"All lists must have a length of {MaxBinId}.")
@@ -248,6 +248,9 @@ class CoralOptions:
         self.available_substrate_percentage = self.initial_benthic_cover_dict['available_substrate']
         self.available_substrate_m2 = self.available_substrate_percentage * self.reef_area / 100
 
+        #rio ask katya:Minor text/typo:
+#There is a stray line "available_substrate_percentage" (no assignment) in one of your files — that will raise NameError or SyntaxError if executed.
+
         # Unavailable substrate is macro + rubble + sediment (as in your code)
         self.unavailable_substrate_percentage = macro_algae_cover + rubble_cover + sediment_cover
         self.unavailable_substrate_m2 = self.unavailable_substrate_percentage * self.reef_area / 100
@@ -256,10 +259,16 @@ class CoralOptions:
 #sediment calculations
 
 
-
-# Calculate additional sediment exposure per month per year
+# Calculate additional sediment exposure per month and then aggregate to yearly totals.
+# Assumes:
+# - enable_sediment_exposure: bool flag from user inputs.
+# - sedi_years: dict with keys (year, month) and values (suspended, deposited).
+# - baseline_suspended_sediment, baseline_deposited_sediment: baseline scalar values to subtract.
+# - MaxYear: integer maximum year index.
 if enable_sediment_exposure:
-    additional_sediment_exposure = {
+    # For each (year, month) compute additional suspended and deposited sediment
+    # relative to the baselines. Result keys remain (year, month).
+    additional_sediment_exposure = { #  additional_sediment_exposure is monthly. Structure: {(year, month): (suspended, deposited), ...}. Where year is realtive year starting at 0
         (year, month): (
             suspended - baseline_suspended_sediment,
             deposited - baseline_deposited_sediment
@@ -267,10 +276,13 @@ if enable_sediment_exposure:
         for (year, month), (suspended, deposited) in sedi_years.items()
     }
 
-    # Initialize dictionary for yearly totals
+    # Initialize yearly totals dictionary with zero tuples for each year index
+    # We create entries for 0..MaxYear inclusive so lookups below are safe.
     add_sedi_exp_per_year = {year: (0, 0) for year in range(MaxYear + 1)}
 
-    # Aggregate monthly values into yearly totals
+    # Sum the monthly additional values into yearly totals.
+    # For each month entry, add its suspended and deposited contributions
+    # to the running yearly total.
     for (year, month), (suspended, deposited) in additional_sediment_exposure.items():
         total_suspended, total_deposited = add_sedi_exp_per_year[year]
         add_sedi_exp_per_year[year] = (
@@ -278,6 +290,8 @@ if enable_sediment_exposure:
             total_deposited + deposited
         )
 else:
+    # If sediment exposure is disabled, produce a zeroed yearly dictionary
+    # (0..MaxYear inclusive) for downstream code that expects this structure.
     add_sedi_exp_per_year = {year: (0, 0) for year in range(MaxYear + 1)}
 
 

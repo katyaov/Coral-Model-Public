@@ -43,7 +43,8 @@ def get_recruited_corals(available_substrate_percentage, pop_flag = True):
 		A list containing the estimated area or population of different coral species, depending on whether the pop_flag argument is True or False.
 
 	'''
-	
+	if no_recruitment:
+		return [0, 0, 0]
 	# Calculate the available substrate area for brooders    
 	brooder_cover_m2 = opts.brooder_cover*colonies_spawning_decline_rate(opts.current_dhw)*opts.reef_area/100
 	brooder_cover_cm2_per_m2 = brooder_cover_m2 * 10000 /opts.reef_area
@@ -113,17 +114,11 @@ def get_recruited_corals(available_substrate_percentage, pop_flag = True):
 	total_recruitment_m2 = surfaceArea_brooder_m2 + sum(surfaceArea_spawner_m2)
 	total_recruitment_perc = surfaceArea_brooder_percentage + sum(surfaceArea_spawner_percentage)
 	
-	if no_recruitment:
-		return [0, 0, 0]
-	
-	
-	
 	if pop_flag:
 		return [ int(recruited_branching_population), int(recruited_foliose_population), int(recruited_other_population) ]
 
 	else:
 		return [ recruited_branching_area_m2, recruited_foliose_area_m2, recruited_other_area_m2 ]
-		
 #below is in the old version before katya 2nd batch of changes 11092025
 	# if no_recruitment:
 	# 	return [0, 0, 0]
@@ -723,17 +718,12 @@ def get_surface_area(population_df):
 def initialize_coral():
 	"""
 	Initialize the coral ecosystem at year = 0.
-	Returns
-	-------
-	None.
 	"""
 	# Ensure attributes exist with defaults
 	if not hasattr(opts, "bleaching"):
 		opts.bleaching = True
 	if not hasattr(opts, "cyclone"):
 		opts.cyclone = True
-	if not hasattr(opts, "enable_sediment_exposure"):
-		opts.enable_sediment_exposure = True
 
 	opts.year = 0
 
@@ -773,11 +763,17 @@ def initialize_coral():
 		opts.current_add_suspended_sediment = 0
 		opts.current_add_deposited_sediment = 0
 
+# deep copy initial values to prevent reference sharing between iterations
+
 	opts.current_coral_cover = initial_coral_cover.copy()
 	opts.brooder_cover = initial_brooder_cover
-	opts.spawner_cover = initial_spawner_cover
+	opts.spawner_cover = initial_spawner_cover.copy()  # Make sure this is a list copy
 	opts.current_total_coral_cover = initial_total_coral_cover
-	opts.yearly_total_coral_cover_df = pd.DataFrame({'Year': 0,
+    
+    # reset all tracking lists
+    # These lists accumulate data across years and must be reset for each iteration
+	opts.yearly_total_coral_cover_df = pd.DataFrame({'Year':0, 
+                   
 		'Branching_Area (%)': initial_coral_cover['Branching'],
 		'Foliose_Area (%)': initial_coral_cover['Foliose'],
 		'Other_Area (%)': initial_coral_cover['Other'],
@@ -805,15 +801,18 @@ def initialize_coral():
 	}, index=[0])
 
 	opts.current_population_df = get_initial_population(PSD_T0)
-	#opts.yearly_population_df_list = [opts.current_population_df]
-	opts.yearly_population_df_list = [opts.current_population_df.copy()] # Fresh list with only year 0
+    
+    # Reset the yearly tracking lists 
+	opts.yearly_population_df_list = [opts.current_population_df.copy()]  # Fresh list with only year 0
+    
 	opts.current_surface_area_m2_df = get_surface_area(opts.current_population_df)
-	#opts.yearly_surface_area_df_list = [opts.current_surface_area_m2_df]
-	opts.yearly_surface_area_df_list = [opts.current_surface_area_m2_df.copy()] # Fresh list with only year 0
+	opts.yearly_surface_area_df_list = [opts.current_surface_area_m2_df.copy()]  # Fresh list with only year 0
+    
 	opts.unavailable_substrate_percentage = opts.current_benthic_cover['macro_algae'] + opts.current_benthic_cover['rubble'] + opts.current_benthic_cover['sediment']
 	opts.available_substrate_percentage = get_available_substrate()
 	opts.maximum_achievable_substrate_percentage = 100 - opts.unavailable_substrate_percentage
 	opts.upper_diameter = MaxBinId * binSize
+
 
 #
 def update_coral_parameters():
