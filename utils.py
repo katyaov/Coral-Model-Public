@@ -18,13 +18,19 @@ except Exception:
 	cyclone = True
 	enable_sediment_exposure = True
 
+
 if not hasattr(opts, "bleaching"):
 	opts.bleaching = bool(bleaching)
 if not hasattr(opts, "cyclone"):
 	opts.cyclone = bool(cyclone)
 ###Rio
+
+
 if not hasattr(opts, "enable_sediment_exposure"):
 	opts.enable_sediment_exposure = bool(enable_sediment_exposure)
+
+# safe fallback in case user_inputs/config don't define sediment_susceptibility
+sediment_susceptibility = globals().get('sediment_susceptibility', 1.0) ### Rio note: i dont like this i cant fgureout why it cant just acces sediment suscpt from user inputs ... try remove later but for now wont run even with this line 
 
 def get_recruited_corals(available_substrate_percentage, pop_flag = True):
 	'''
@@ -1124,21 +1130,38 @@ def run_yearly_change(PSD_df, Years):
 
 		
 		###Rio 
+		#removing below to Replace the sediment-handling block inside run_yearly_change so current_growth_rate is computed and then used in calculate_population_change calls
 		
 		# Handle sediment exposure only if enabled
+		# if getattr(opts, "enable_sediment_exposure", True) and opts.add_deposited_sediment_lst is not None:
+		# 	opts.current_add_deposited_sediment = opts.add_deposited_sediment_lst[opts.year]
+		# 	###RIO adjust below if you want to add resilince with exposure 
+		# 	# count the number of bleaching that took place
+		# 	#if opts.current_add_deposited_sediment != 0:
+		# 		# every time bleaching happens the coral becomes resilient to bleaching
+		# 		# hence update the coefficient
+		# 	#	opts.dhw_counter += 1
+		# else:
+		# 	opts.current_add_deposited_sediment = 0
+
+		# 	#rio gr
+		# 	GR_ss = get_GR_after_ss(opts.current_add_suspended_sediment, gr_sedi_sus_coeff)
+
 		if getattr(opts, "enable_sediment_exposure", True) and opts.add_deposited_sediment_lst is not None:
+			# set current yearly sediment (both deposited and suspended)
 			opts.current_add_deposited_sediment = opts.add_deposited_sediment_lst[opts.year]
-			###RIO adjust below if you want to add resilince with exposure 
-			# count the number of bleaching that took place
-			#if opts.current_add_deposited_sediment != 0:
-				# every time bleaching happens the coral becomes resilient to bleaching
-				# hence update the coefficient
-			#	opts.dhw_counter += 1
+			opts.current_add_suspended_sediment = opts.add_suspended_sediment_lst[opts.year]
 		else:
 			opts.current_add_deposited_sediment = 0
+			opts.current_add_suspended_sediment = 0
 
-			#rio gr
-			GR_ss = get_GR_after_ss(opts.current_add_suspended_sediment, gr_sedi_sus_coeff)
+		# compute growth rates for this year (use suspended-sediment adjusted growth if enabled)
+		if getattr(opts, "enable_sediment_exposure", True):
+			# get_GR_after_ss returns a DataFrame with the same columns as global `growth_rate`
+			current_growth_rate = get_GR_after_ss(growth_rate, add_sedi_exp_per_year, opts.year, sedi_exp_growth_coeff)
+		else:
+			current_growth_rate = growth_rate
+		# end of removing above
 
 		PCM_rates_dhw = get_PCM_rates_after_dhw(PCM_rates, opts.current_dhw, branching_bleaching_rate, foliose_bleaching_rate, other_bleaching_rate)
 		#PCM_rates_ds = get_PCM_rates_after_DS_exp(PCM_rates, opts.current_add_deposited_sediment, sedi_exp_PCM_coeff)
@@ -1148,6 +1171,9 @@ def run_yearly_change(PSD_df, Years):
     		opts.year,               # current year index
     		sedi_exp_PCM_coeff      # coefficients from config.py
 		)
+
+
+
 		WCM_rate_cyc = get_WCM_rates_after_cyclones(WCM_rates, opts.current_cyc[0], opts.current_cyc[1])
 
 #tried to include both decline from ds and from dhw.. didnt work 
@@ -1155,9 +1181,36 @@ def run_yearly_change(PSD_df, Years):
 #		new_foliose_pop = calculate_population_change(opts.current_population_df['Foliose'], growth_rate['Foliose'],PCM_rates_dhw['Foliose'],PCM_rates_ds['Foliose'],WCM_rate_cyc['Foliose'],opts.current_total_coral_cover,'Foliose')
 #		new_other_pop = calculate_population_change(opts.current_population_df['Other'], growth_rate['Other'],PCM_rates_dhw['Other'],PCM_rates_ds['Other'],WCM_rate_cyc['Other'],opts.current_total_coral_cover,'Other')
 #for this version of the model I will include only the impact of ds
+		
+
+		#commented out code block below to incorp current gr into current total coral cover calc 
+		# new_branching_pop = calculate_population_change(
+    	# 	opts.current_population_df['Branching'],
+    	# 	growth_rate['Branching'],
+    	# 	PCM_rates_ds['Branching'],
+   		#  	WCM_rate_cyc['Branching'],
+    	# 	opts.current_total_coral_cover,
+    	# 	'Branching'
+		# )
+		# new_foliose_pop = calculate_population_change(
+    	# 	opts.current_population_df['Foliose'],
+    	# 	growth_rate['Foliose'],
+    	# 	PCM_rates_ds['Foliose'],
+    	# 	WCM_rate_cyc['Foliose'],
+    	# 	opts.current_total_coral_cover,
+    	# 	'Foliose'
+		# )
+		# new_other_pop = calculate_population_change(
+    	# 	opts.current_population_df['Other'],
+    	# 	growth_rate['Other'],
+    	# 	PCM_rates_ds['Other'],
+    	# 	WCM_rate_cyc['Other'],
+    	# 	opts.current_total_coral_cover,
+    	# 	'Other'
+		# )
 		new_branching_pop = calculate_population_change(
     		opts.current_population_df['Branching'],
-    		growth_rate['Branching'],
+    		current_growth_rate['Branching'],
     		PCM_rates_ds['Branching'],
    		 	WCM_rate_cyc['Branching'],
     		opts.current_total_coral_cover,
@@ -1165,7 +1218,7 @@ def run_yearly_change(PSD_df, Years):
 		)
 		new_foliose_pop = calculate_population_change(
     		opts.current_population_df['Foliose'],
-    		growth_rate['Foliose'],
+    		current_growth_rate['Foliose'],
     		PCM_rates_ds['Foliose'],
     		WCM_rate_cyc['Foliose'],
     		opts.current_total_coral_cover,
@@ -1173,7 +1226,7 @@ def run_yearly_change(PSD_df, Years):
 		)
 		new_other_pop = calculate_population_change(
     		opts.current_population_df['Other'],
-    		growth_rate['Other'],
+    		current_growth_rate['Other'],
     		PCM_rates_ds['Other'],
     		WCM_rate_cyc['Other'],
     		opts.current_total_coral_cover,
@@ -1854,7 +1907,7 @@ def get_PCM_rates_after_DS_exp(PCM_rates, add_sedi_exp_per_year, year, sedi_exp_
 # 		growth_rate_ss = {i: growth_rate[i] * np.exp(-gr_sedi_sus_coeff[i] * current_add_suspended_sediment) for i in coral_type}
 # 		return growth_rate_ss
 
-def get_GR_after_ss(growth_rate, add_sedi_exp_per_year, year, sedi_exp_growth_coeff,sediment_susceptibility):
+def get_GR_after_ss(growth_rate, add_sedi_exp_per_year, year, sedi_exp_growth_coeff):
     """
     Calculate the growth rate after considering the effect of suspended sediment for each coral type and bin,
     returning a DataFrame similar to get_PCM_rates_after_DS_exp.
