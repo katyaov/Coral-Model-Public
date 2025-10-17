@@ -1854,7 +1854,7 @@ def get_PCM_rates_after_DS_exp(PCM_rates, add_sedi_exp_per_year, year, sedi_exp_
 # 		growth_rate_ss = {i: growth_rate[i] * np.exp(-gr_sedi_sus_coeff[i] * current_add_suspended_sediment) for i in coral_type}
 # 		return growth_rate_ss
 
-def get_GR_after_ss(growth_rate, add_sedi_exp_per_year, year, sedi_exp_growth_coeff):
+def get_GR_after_ss(growth_rate, add_sedi_exp_per_year, year, sedi_exp_growth_coeff,sediment_susceptibility):
     """
     Calculate the growth rate after considering the effect of suspended sediment for each coral type and bin,
     returning a DataFrame similar to get_PCM_rates_after_DS_exp.
