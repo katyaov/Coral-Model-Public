@@ -267,32 +267,28 @@ class CoralOptions:
 # - MaxYear: integer maximum year index.
 if enable_sediment_exposure:
     # For each (year, month) compute additional suspended and deposited sediment
-    # relative to the baselines. Result keys remain (year, month).
-    additional_sediment_exposure = { #  additional_sediment_exposure is monthly. Structure: {(year, month): (suspended, deposited), ...}. Where year is realtive year starting at 0
+    # relative to the baselines. Clamp negatives to 0.
+    additional_sediment_exposure = {
         (year, month): (
-            suspended - baseline_suspended_sediment,
-            deposited - baseline_deposited_sediment
+            max(0.0, suspended - baseline_suspended_sediment),
+            max(0.0, deposited - baseline_deposited_sediment)
         )
         for (year, month), (suspended, deposited) in sedi_years.items()
     }
 
     # Initialize yearly totals dictionary with zero tuples for each year index
-    # We create entries for 0..MaxYear inclusive so lookups below are safe.
-    add_sedi_exp_per_year = {year: (0, 0) for year in range(MaxYear + 1)}
+    add_sedi_exp_per_year = {year: (0.0, 0.0) for year in range(MaxYear + 1)}
 
     # Sum the monthly additional values into yearly totals.
-    # For each month entry, add its suspended and deposited contributions
-    # to the running yearly total.
     for (year, month), (suspended, deposited) in additional_sediment_exposure.items():
-        total_suspended, total_deposited = add_sedi_exp_per_year[year]
+        total_suspended, total_deposited = add_sedi_exp_per_year.get(year, (0.0, 0.0))
         add_sedi_exp_per_year[year] = (
             total_suspended + suspended,
             total_deposited + deposited
         )
 else:
     # If sediment exposure is disabled, produce a zeroed yearly dictionary
-    # (0..MaxYear inclusive) for downstream code that expects this structure.
-    add_sedi_exp_per_year = {year: (0, 0) for year in range(MaxYear + 1)}
+    add_sedi_exp_per_year = {year: (0.0, 0.0) for year in range(MaxYear + 1)}
 
 
 
@@ -305,9 +301,9 @@ sedi_exp_PCM_coeff = {
 
 
 sedi_exp_growth_coeff = {
-    'Branching': -0.997,
-    'Foliose': -0.272, 
-    'Other': -0.533
+    'Branching': -0.00997,
+    'Foliose': -0.00272, 
+    'Other': -0.00533
 }         
 
 

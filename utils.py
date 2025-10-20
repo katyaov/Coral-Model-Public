@@ -1103,8 +1103,24 @@ def run_yearly_change(PSD_df, Years):
 	
     # Generate random growth slope for each run, with proper seeding
     # Use numpy random instead of Python's random for better control
-	opts.gr_slope = np.random.uniform(0.01, 0.04)
-	
+	opts.gr_slope = np.random.uniform(0.01, 0.04) #comutes growth slope for each run 
+###ADDED THIS TO ALLOW: growth rate to be upated based on growth slope per run
+###
+	    # Recompute per-bin decline and rebuild growth_rate so the new slope takes effect
+	if linear_decay_growth_rate:
+		_rate_of_decline = np.array([1 if i == 0 else 1 - (i - 1) * opts.gr_slope for i in range(MaxBinId)])
+	else:
+		_rate_of_decline = np.array([np.exp(-opts.gr_slope * binId) for binId in range(MaxBinId)])
+
+    # Rebuild the per-morphology growth_rate DataFrame used later in the year loop
+	growth_rate = pd.DataFrame({
+		'Branching': growth_rate_branching * _rate_of_decline,
+		'Foliose':   growth_rate_foliose   * _rate_of_decline,
+		'Other':     growth_rate_other     * _rate_of_decline,
+	})
+###
+
+
 	opts.dhw_counter = 0
 		
 	# Run simulation for given number of years
@@ -1906,9 +1922,8 @@ def get_PCM_rates_after_DS_exp(PCM_rates, add_sedi_exp_per_year, year, sedi_exp_
 # 	else:
 # 		growth_rate_ss = {i: growth_rate[i] * np.exp(-gr_sedi_sus_coeff[i] * current_add_suspended_sediment) for i in coral_type}
 # 		return growth_rate_ss
-
 def get_GR_after_ss(growth_rate, add_sedi_exp_per_year, year, sedi_exp_growth_coeff):
-    """
+	"""
     Calculate the growth rate after considering the effect of suspended sediment for each coral type and bin,
     returning a DataFrame similar to get_PCM_rates_after_DS_exp.
 
@@ -1927,24 +1942,35 @@ def get_GR_after_ss(growth_rate, add_sedi_exp_per_year, year, sedi_exp_growth_co
     --------
     growth_rate_ss : pd.DataFrame
         DataFrame with updated growth rates for each coral type and bin after considering suspended sediment.
-    """
-    import pandas as pd
+	"""
+	import pandas as pd
 
-    growth_rate_ss = pd.DataFrame(columns=growth_rate.columns)
-    add_suspended_sediment = add_sedi_exp_per_year.get(year, (0, 0))[0]
-
-    for coral in growth_rate.columns:
-        coeff = sedi_exp_growth_coeff.get(coral, 0)
-        adjusted_rates = []
-        for base_rate in growth_rate[coral]:
-            # Incorporate sediment_susceptibility if needed
-            adjusted_rate = base_rate - (base_rate * (coeff * add_suspended_sediment * sediment_susceptibility))
-			#adjusted_rate = base_rate - (base_rate * (coeff * add_suspended_sediment * sediment_susceptibility/100))
-            adjusted_rate = max(0, min(adjusted_rate, base_rate))
-            adjusted_rates.append(adjusted_rate)
-        growth_rate_ss[coral] = adjusted_rates
-
-    return growth_rate_ss
+	growth_rate_ss = pd.DataFrame(columns=growth_rate.columns)
+	add_suspended_sediment = add_sedi_exp_per_year.get(year, (0, 0))[0]
+###removing below because increased SS increases GR
+    # for coral in growth_rate.columns:
+    #     coeff = sedi_exp_growth_coeff.get(coral, 0)
+    #     adjusted_rates = []
+    #     for base_rate in growth_rate[coral]:
+    #         # Incorporate sediment_susceptibility if needed
+    #         adjusted_rate = base_rate - (base_rate * (coeff * add_suspended_sediment * sediment_susceptibility))
+	# 		#adjusted_rate = base_rate - (base_rate * (coeff * add_suspended_sediment * sediment_susceptibility/100))
+    #         adjusted_rate = max(0, min(adjusted_rate, base_rate))
+    #         adjusted_rates.append(adjusted_rate)
+    #     growth_rate_ss[coral] = adjusted_rates
+###
+	for coral in growth_rate.columns:
+		coeff = sedi_exp_growth_coeff.get(coral, 0)
+		adjusted_rates = []
+		for base_rate in growth_rate[coral]:
+			
+			
+			factor = max(0.0, 1.0 + coeff * add_suspended_sediment * sediment_susceptibility)
+			adjusted_rate = base_rate * factor # apply the factor to the base growth rate for this bin
+			adjusted_rate = max(0.0, adjusted_rate) # clamp adjusted_rate to be >= 0.0 (prevent negative growth)
+			adjusted_rates.append(adjusted_rate)
+		growth_rate_ss[coral] = adjusted_rates
+	return growth_rate_ss
 
 
 def get_WCM_rates_after_cyclones(WCM_rates, cyclone_severity_level, distance_to_cyclone):
