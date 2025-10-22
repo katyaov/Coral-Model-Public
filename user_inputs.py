@@ -7,8 +7,8 @@
 #**********************************************************
 import pandas as pd
 
-growthOnly = False
-no_recruitment = True
+growthOnly = True
+no_recruitment = False
 number_of_iterations = 100 #you can choose how many times to run the model (100 times is recommended)
 
 # choose from ['protected','semiprotected','exposed']
@@ -139,8 +139,13 @@ sedi_years = {
     if pd.notna(row['Year'])  and pd.notna(row['Month']) and pd.notna(row['Suspended_sediment']) and pd.notna(row['Deposited_sediment'])
 }
 
-
-sediment_susceptibility = 1 # value from 0 to 1 that indicates how susceptible the reef is to sediment impacting its trajectory. Reefs that have a value of 0 are not susceptible to sediment, while reefs with a value of 1 are very susceptible to sediment. Default value is 1.
+#sediment_susceptibility: value from 0 to 1 that indicates how susceptible the reef processes are to sediment impacting it. Reefs processes that have a value of 0 are not susceptible to sediment, while reefs processes with a value of 1 are very susceptible to sediment. Default value is 1 (very susceptatble).
+#pcm
+sediment_susceptibilityPCM = 1 
+#growth rate
+sediment_susceptibilityGR = 1
+#fertilisation
+sediment_susceptibilityF = 1 
 
 #Reproduction - these values are only required if enable_sediment_exposure is True
 spawning_month_known = True # if spawning month is known, set to True. If not, set to False

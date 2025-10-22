@@ -316,7 +316,7 @@ sedi_exp_settlement_coeff = {
 
 #sediment exposure fertilisation relationships for spawners and brooders
 sedi_exp_fertilisation_coeff = {
-    'spawner': -0.6232,
+    'spawner': -0.006232,
     'brooder': 1   # this is a placeholder, as brooder fertilisation is not affected by sediment exposure  
 }
 
