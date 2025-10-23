@@ -30,7 +30,9 @@ if not hasattr(opts, "enable_sediment_exposure"):
 	opts.enable_sediment_exposure = bool(enable_sediment_exposure)
 
 # safe fallback in case user_inputs/config don't define sediment_susceptibility
-sediment_susceptibility = globals().get('sediment_susceptibility', 1.0) ### Rio note: i dont like this i cant fgureout why it cant just acces sediment suscpt from user inputs ... try remove later but for now wont run even with this line 
+sediment_susceptibilityPCM = globals().get('sediment_susceptibilityPCM', 1.0) ### Rio note: i dont like this i cant fgureout why it cant just acces sediment suscpt from user inputs ... try remove later but for now wont run even with this line 
+sediment_susceptibilityGR = globals().get('sediment_susceptibilityGR', 1.0) ### Rio note: i dont like this i cant fgureout why it cant just acces sediment suscpt from user inputs ... try remove later but for now wont run even with this line 
+sediment_susceptibilityF = globals().get('sediment_susceptibilityF', 1.0) 
 
 def get_recruited_corals(available_substrate_percentage, pop_flag = True):
 	'''
@@ -74,7 +76,7 @@ def get_recruited_corals(available_substrate_percentage, pop_flag = True):
 	for rate in brooder_mortality_rate:
 		num_recruits_brooder *= (1 - rate)
 	
-	# Calculate the surface area covered by 5cm coral recruits 
+    # Calculate the surface area covered by 5cm coral recruits 
 	binDiameter = binSize
 	surfaceArea5cm_br_cm2 = area_parameter * np.pi * (binDiameter/2)**2 * num_recruits_brooder
 	
@@ -85,8 +87,47 @@ def get_recruited_corals(available_substrate_percentage, pop_flag = True):
 	spawner_cover_m2 = [cover*opts.reef_area/100 for cover in opts.spawner_cover]
 	number_of_eggs = [10000 * eggs_decline_rate(opts.current_dhw) * opts.eggs_density[i] * spawner_cover_m2[i] for i in range(len(spawner_cover_m2))]
 	num_eggs_spawning = [number_of_eggs[i]*opts.eggs_spawning_rate[i]* colonies_spawning_decline_rate(opts.current_dhw) for i in range(len(number_of_eggs))]
-	fertilised_eggs = [opts.eggs_fertilisation_rate*eggs for eggs in num_eggs_spawning]
-	
+    
+    # If sediment exposure is disabled, use base fertilisation for all spawners
+	if not getattr(opts, 'enable_sediment_exposure', False):
+		fertilised_eggs = [opts.eggs_fertilisation_rate * eggs for eggs in num_eggs_spawning]
+	else:
+        # Determine spawning month: use user-provided month when flagged, otherwise pick random 1..12
+		spawning_month_known_flag = globals().get('spawning_month_known', False)
+		if spawning_month_known_flag:
+			spawn_month = globals().get('spawning_month') #If the month is known, read the global spawning_month 
+		else:
+			spawn_month = random.randint(1, 12) #If not known, pick a random month between 1 and 12
+
+        # Model year index (use opts.year if present, else 0)
+		model_year = int(getattr(opts, 'year', 0))
+
+        # Default: no suspended sediment in that month
+		add_suspended_in_month = 0.0
+		if 'additional_sediment_exposure' in globals():
+            # additional_sediment_exposure[(year, month)] -> (suspended, deposited)
+			add_suspended_in_month = additional_sediment_exposure.get((model_year, spawn_month), (0.0, 0.0))[0]
+
+        # Start from base fertilisation rate and reduce if suspended sediment present
+		eggs_fert_rate_this_year = opts.eggs_fertilisation_rate
+		if add_suspended_in_month > 0:#Only apply sediment effect when there is a positive suspended sediment value.
+			#coeff = globals().get('sedi_exp_fertilisation_coeff', {}).get('spawner', 0.0)
+			coeff = globals().get('sedi_exp_fertilisation_coeff', {}).get('spawner')
+            # use fertilisation-specific susceptibility from user inputs
+			#susc = globals().get('sediment_susceptibilityF', 1.0)
+			susc = globals().get('sediment_susceptibilityF')
+            # apply coeff * add_suspended_in_month * susceptibility so effect scales with sediment magnitude
+			
+			raw = 1+(coeff * add_suspended_in_month * susc) ###
+			###raw = 1 - ((-1*coeff) * add_suspended_in_month * susc) #alternative way to write above line
+			### 100% - ( -1 *coeff*suspended sediment * susc) so coeff is negative and effect reduces fertilisation rate from 100%
+			factor = max(0.0, min(1.0, raw))#Clamp the factor into [0.0, 1.0] so it cannot be negative or amplify above 1.
+			eggs_fert_rate_this_year *= factor
+
+        # Apply fertilisation rate to each spawner egg pool
+		fertilised_eggs = [eggs_fert_rate_this_year * eggs for eggs in num_eggs_spawning]
+
+
 	coeff_retained =  get_retention_rate()
 	eggs_retained = [coeff_retained[i]*fertilised_eggs[i]for i in range(len(fertilised_eggs))]
 	
@@ -1889,7 +1930,7 @@ def get_PCM_rates_after_DS_exp(PCM_rates, add_sedi_exp_per_year, year, sedi_exp_
         adjusted_rates = []
         for base_rate in PCM_rates[coral_type]:
             # Ensure PCM is always between 0 and 1
-            adjusted_rate = base_rate + (base_rate* coeff * add_deposited_sediment* sediment_susceptibility)
+            adjusted_rate = base_rate + (base_rate* coeff * add_deposited_sediment* sediment_susceptibilityPCM)
             adjusted_rate = max(0, min(adjusted_rate, 1))
             adjusted_rates.append(adjusted_rate)
         pcm_rates_ds[coral_type] = adjusted_rates
@@ -1965,7 +2006,7 @@ def get_GR_after_ss(growth_rate, add_sedi_exp_per_year, year, sedi_exp_growth_co
 		for base_rate in growth_rate[coral]:
 			
 			
-			factor = max(0.0, 1.0 + coeff * add_suspended_sediment * sediment_susceptibility)
+			factor = max(0.0, 1.0 + coeff * add_suspended_sediment * sediment_susceptibilityGR)
 			adjusted_rate = base_rate * factor # apply the factor to the base growth rate for this bin
 			adjusted_rate = max(0.0, adjusted_rate) # clamp adjusted_rate to be >= 0.0 (prevent negative growth)
 			adjusted_rates.append(adjusted_rate)

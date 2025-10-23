@@ -20,11 +20,12 @@ Initial_Rugosity          = 1.2
 
 #Total reef area (m2)
 reef_area                 = 10000
-reef_shape                = 11 # 1-12 based of Black et al 1990
+reef_shape                = 3 # 1-12 based of Black et al 1990 #reef morphological types into one of three retention categories (low = 1, 12; medium = 2, 5, 6, 11; high  = 3, 4, 7, 8, 9, 10)
+
 
 #start and end years
 year_start                = 2005
-year_end                  = 2030
+year_end                  = 2024
 
 MaxYear = year_end - year_start        # Number of years we want to calculate
 
@@ -141,11 +142,11 @@ sedi_years = {
 
 #sediment_susceptibility: value from 0 to 1 that indicates how susceptible the reef processes are to sediment impacting it. Reefs processes that have a value of 0 are not susceptible to sediment, while reefs processes with a value of 1 are very susceptible to sediment. Default value is 1 (very susceptatble).
 #pcm
-sediment_susceptibilityPCM = 1 
+sediment_susceptibilityPCM = 0 
 #growth rate
-sediment_susceptibilityGR = 1
+sediment_susceptibilityGR = 0
 #fertilisation
-sediment_susceptibilityF = 1 
+sediment_susceptibilityF = 0.5 
 
 #Reproduction - these values are only required if enable_sediment_exposure is True
 spawning_month_known = True # if spawning month is known, set to True. If not, set to False
