@@ -107,6 +107,9 @@ def get_recruited_corals(available_substrate_percentage, pop_flag = True):
 		if 'additional_sediment_exposure' in globals():
             # additional_sediment_exposure[(year, month)] -> (suspended, deposited)
 			add_suspended_in_month = additional_sediment_exposure.get((model_year, spawn_month), (0.0, 0.0))[0]
+		else:
+                # No baseline available -> do not apply suspended-sediment effect
+			add_suspended_in_month = 0.0
 
         # Start from base fertilisation rate and reduce if suspended sediment present
 		eggs_fert_rate_this_year = opts.eggs_fertilisation_rate
@@ -2004,9 +2007,11 @@ def get_GR_after_ss(growth_rate, add_sedi_exp_per_year, year, sedi_exp_growth_co
 		coeff = sedi_exp_growth_coeff.get(coral, 0)
 		adjusted_rates = []
 		for base_rate in growth_rate[coral]:
+			# compute raw multiplicative factor then clamp to [0.0, 1.0]
+			raw = 1.0 + coeff * add_suspended_sediment * sediment_susceptibilityGR
+			factor = max(0.0, min(1.0, raw))
 			
-			
-			factor = max(0.0, 1.0 + coeff * add_suspended_sediment * sediment_susceptibilityGR)
+			#factor = max(0.0, 1.0 + coeff * add_suspended_sediment * sediment_susceptibilityGR)
 			adjusted_rate = base_rate * factor # apply the factor to the base growth rate for this bin
 			adjusted_rate = max(0.0, adjusted_rate) # clamp adjusted_rate to be >= 0.0 (prevent negative growth)
 			adjusted_rates.append(adjusted_rate)

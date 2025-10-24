@@ -45,7 +45,9 @@ initial_brooder_cover = 1
 initial_spawner_cover = [9.9,7]  # the first element is B+F and the second element is O
 
 # initial_coral_cover = {'Branching':7.38, 'Foliose':41.03, 'Other':16.6}
-initial_coral_cover = {'Branching':2.6, 'Foliose':7.3, 'Other':8}
+
+#initial_coral_cover = {'Branching':2.6, 'Foliose':7.3, 'Other':8}
+initial_coral_cover = {'Branching':1, 'Foliose':3, 'Other':4}
 initial_total_coral_cover = sum(initial_coral_cover.values())
 
 #----------------------------------------------------------------------------------------
@@ -146,7 +148,7 @@ sediment_susceptibilityPCM = 0
 #growth rate
 sediment_susceptibilityGR = 0
 #fertilisation
-sediment_susceptibilityF = 0.5 
+sediment_susceptibilityF = 1 
 
 #Reproduction - these values are only required if enable_sediment_exposure is True
 spawning_month_known = True # if spawning month is known, set to True. If not, set to False
