@@ -193,20 +193,28 @@ class CoralOptions:
             egg_density_spawner_branching_foliose,
             egg_density_spawner_other
         ]
-        self.eggs_spawning_rate = [
-            random.uniform(0.63, 0.82),
-            random.uniform(0.55, 0.67)
-        ]
-        self.eggs_fertilisation_rate = random.uniform(0.41, 0.69)
+        ####
+        # self.eggs_spawning_rate = [
+        #     random.uniform(0.63, 0.82),
+        #     random.uniform(0.55, 0.67)
+        # ]
+        # self.eggs_fertilisation_rate = random.uniform(0.41, 0.69)
 
-        # Growth slope
-        if linear_decay_growth_rate:
-            self.gr_slope = random.uniform(0.005, 0.045)
-            self.rate_of_decline = np.array([1 if i == 0 else 1 - (i - 1) * self.gr_slope for i in range(MaxBinId)])
-        else:
-            self.gr_slope = random.uniform(0.05, 1)
-            self.rate_of_decline = np.array([np.exp(-self.gr_slope * binId) for binId in range(MaxBinId)])
+        # # Growth slope
+        # if linear_decay_growth_rate:
+        #     self.gr_slope = random.uniform(0.005, 0.045)
+        #     self.rate_of_decline = np.array([1 if i == 0 else 1 - (i - 1) * self.gr_slope for i in range(MaxBinId)])
+        # else:
+        #     self.gr_slope = random.uniform(0.05, 1)
+        #     self.rate_of_decline = np.array([np.exp(-self.gr_slope * binId) for binId in range(MaxBinId)])
+        # Move randomized defaults out of the constructor: set placeholders (will be set in initialize_coral)
+        self.eggs_spawning_rate = None           # will be assigned in initialize_coral()
+        self.eggs_fertilisation_rate = None      # will be assigned in initialize_coral()
+        # growth slope placeholder (randomized per run in initialize_coral / run_yearly_change)
+        self.gr_slope = None
+        # rate_of_decline will be computed in initialize_coral() (and recomputed per run in run_yearly_change)
 
+####
         # Initial benthic cover dict
         self.initial_benthic_cover_dict = {
             "total": (
@@ -615,12 +623,25 @@ def create_cyclone_list(cyc_years):
 # instantiate options
 opts = CoralOptions()
 
-# 
-if linear_decay_growth_rate:
-    rate_of_decline = np.array([1 if i == 0 else 1 - (i - 1) * opts.gr_slope for i in range(MaxBinId)])
-else:
-    rate_of_decline = np.array([np.exp(-opts.gr_slope * binId) for binId in range(MaxBinId)])
+# ###
+# if linear_decay_growth_rate:
+#     rate_of_decline = np.array([1 if i == 0 else 1 - (i - 1) * opts.gr_slope for i in range(MaxBinId)])
+# else:
+#     rate_of_decline = np.array([np.exp(-opts.gr_slope * binId) for binId in range(MaxBinId)])
+# instantiate options
+opts = CoralOptions()
 
+# Ensure a deterministic default gr_slope is available to build module-level rate_of_decline and growth_rate.
+# This default is only used to create the initial `growth_rate` object; the randomized gr_slope used per-run
+# will be set inside initialize_coral() and/or run_yearly_change().
+_default_gr_slope = 0.0340
+_effective_gr_slope = _default_gr_slope if getattr(opts, 'gr_slope', None) is None else opts.gr_slope
+
+if linear_decay_growth_rate:
+    rate_of_decline = np.array([1 if i == 0 else 1 - (i - 1) * _effective_gr_slope for i in range(MaxBinId)])
+else:
+    rate_of_decline = np.array([np.exp(-_effective_gr_slope * binId) for binId in range(MaxBinId)])
+    ###
 if use_custom_growth_rate:
     growth_rate_branching = growth_coefficient_branching * custom_growth_rate_branching
     growth_rate_foliose = growth_coefficient_foliose * custom_growth_rate_foliose

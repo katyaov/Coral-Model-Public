@@ -9,7 +9,7 @@ import re
 from datetime import datetime
 from zoneinfo import ZoneInfo 
 
-opts = CoralOptions()
+#opts = CoralOptions() #this secound coral options instance causes issues when running multiple iterations of the model in a loop from the main script. moved to main script and passed as argument to functions that need it. rio 21092025
 
 try:
 	from user_inputs import bleaching, cyclone, enable_sediment_exposure
@@ -776,7 +776,29 @@ def initialize_coral():
 		opts.cyclone = True
 
 	opts.year = 0
+###
 
+    # --- Randomized defaults moved here so they are reset each model run ---
+    # eggs spawning rates for branching/foliose and other (was in CoralOptions)
+	if getattr(opts, 'eggs_spawning_rate', None) is None:
+		opts.eggs_spawning_rate = [
+			random.uniform(0.63, 0.82),
+			random.uniform(0.55, 0.67)]
+    # eggs fertilisation rate (was in CoralOptions)
+	if getattr(opts, 'eggs_fertilisation_rate', None) is None:
+		opts.eggs_fertilisation_rate = random.uniform(0.41, 0.69)
+
+    # growth slope: generate a run-specific slope here (keeps per-run behaviour consistent)
+	if getattr(opts, 'gr_slope', None) is None:
+		opts.gr_slope = np.random.uniform(0.005, 0.045)
+
+    # compute per-bin decline based on the chosen gr_slope
+	if linear_decay_growth_rate:
+		opts.rate_of_decline = np.array([1 if i == 0 else 1 - (i - 1) * opts.gr_slope for i in range(MaxBinId)])
+	else:
+		opts.rate_of_decline = np.array([np.exp(-opts.gr_slope * binId) for binId in range(MaxBinId)])
+    # --- end randomized defaults ---
+###
 	# --- DHW handling ---
 	if opts.bleaching:
 		opts.dhw_lst = create_dhw_list(dhw_years)

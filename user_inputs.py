@@ -25,7 +25,7 @@ reef_shape                = 3 # 1-12 based of Black et al 1990 #reef morphologic
 
 #start and end years
 year_start                = 2005
-year_end                  = 2024
+year_end                  = 2020
 
 MaxYear = year_end - year_start        # Number of years we want to calculate
 
