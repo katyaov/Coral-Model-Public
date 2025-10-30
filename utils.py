@@ -2317,7 +2317,8 @@ def calculate_benthos_after_pcm_ds(change_branching_cover, change_foliose_cover,
 	"""
 	
 	if change_branching_cover < 0:
-		opts.current_benthic_cover['dead_coral'] += abs(change_branching_cover)
+		#opts.current_benthic_cover['dead_coral'] += abs(change_branching_cover)
+		opts.current_benthic_cover['sediment'] += abs(change_branching_cover)
 		
 	else:
 		w_hs, w_dc, w_tf = split_w(opts.current_benthic_cover['hard_substrate'], opts.current_benthic_cover['dead_coral'], opts.current_benthic_cover['turfing_algae'], opts.available_substrate_percentage, change_branching_cover)
@@ -2326,8 +2327,8 @@ def calculate_benthos_after_pcm_ds(change_branching_cover, change_foliose_cover,
 		opts.current_benthic_cover['turfing_algae'] -= w_tf
 		
 	if change_foliose_cover < 0:
-		opts.current_benthic_cover['dead_coral'] += abs(change_foliose_cover)
-		
+		#opts.current_benthic_cover['dead_coral'] += abs(change_foliose_cover)
+		opts.current_benthic_cover['sediment'] += abs(change_foliose_cover)
 		
 	else:
 		w_hs, w_dc, w_tf = split_w(opts.current_benthic_cover['hard_substrate'], opts.current_benthic_cover['dead_coral'], opts.current_benthic_cover['turfing_algae'], opts.available_substrate_percentage, change_foliose_cover)
@@ -2336,8 +2337,8 @@ def calculate_benthos_after_pcm_ds(change_branching_cover, change_foliose_cover,
 		opts.current_benthic_cover['turfing_algae'] -= w_tf
 		
 	if change_other_cover < 0:
-		opts.current_benthic_cover['dead_coral'] += abs(change_other_cover)
-		
+		#opts.current_benthic_cover['dead_coral'] += abs(change_other_cover)
+		opts.current_benthic_cover['sediment'] += abs(change_other_cover)
 		
 	else:
 		w_hs, w_dc, w_tf = split_w(opts.current_benthic_cover['hard_substrate'], opts.current_benthic_cover['dead_coral'], opts.current_benthic_cover['turfing_algae'], opts.available_substrate_percentage, change_other_cover)
