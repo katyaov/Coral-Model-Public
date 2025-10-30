@@ -7,9 +7,9 @@
 #**********************************************************
 import pandas as pd
 
-growthOnly = True
+growthOnly = False
 no_recruitment = False
-number_of_iterations = 100 #you can choose how many times to run the model (100 times is recommended)
+number_of_iterations = 20 #you can choose how many times to run the model (100 times is recommended)
 
 # choose from ['protected','semiprotected','exposed']
 reef_exposure = 'protected'
@@ -25,7 +25,7 @@ reef_shape                = 3 # 1-12 based of Black et al 1990 #reef morphologic
 
 #start and end years
 year_start                = 2005
-year_end                  = 2020
+year_end                  = 2024
 
 MaxYear = year_end - year_start        # Number of years we want to calculate
 
@@ -46,8 +46,8 @@ initial_spawner_cover = [9.9,7]  # the first element is B+F and the second eleme
 
 # initial_coral_cover = {'Branching':7.38, 'Foliose':41.03, 'Other':16.6}
 
-#initial_coral_cover = {'Branching':2.6, 'Foliose':7.3, 'Other':8}
-initial_coral_cover = {'Branching':1, 'Foliose':3, 'Other':4}
+initial_coral_cover = {'Branching':2.6, 'Foliose':7.3, 'Other':8}
+#initial_coral_cover = {'Branching':1, 'Foliose':3, 'Other':4}
 initial_total_coral_cover = sum(initial_coral_cover.values())
 
 #----------------------------------------------------------------------------------------
@@ -144,13 +144,15 @@ sedi_years = {
 
 #sediment_susceptibility: value from 0 to 1 that indicates how susceptible the reef processes are to sediment impacting it. Reefs processes that have a value of 0 are not susceptible to sediment, while reefs processes with a value of 1 are very susceptible to sediment. Default value is 1 (very susceptatble).
 #pcm
-sediment_susceptibilityPCM = 0 
+sediment_susceptibilityPCM = 1 #only impacts additional deposited sediment effects on partial colony mortality
 #growth rate
-sediment_susceptibilityGR = 0
+sediment_susceptibilityGR = 1 #only impacts additional suspended sediment effects on growth rate
 #fertilisation
-sediment_susceptibilityF = 1 
+sediment_susceptibilityF = 1 #only impacts additional suspended sediment effects on fertilisation success
 
 #Reproduction - these values are only required if enable_sediment_exposure is True
 spawning_month_known = True # if spawning month is known, set to True. If not, set to False
 spawning_month = 1 # if spawning month is known, set the month number (1-12). 
 
+#### PLACE HOLDER for water energy scale/slider 
+# turbulence_scale = 1 # scale from 1 to 10, where 1 is low turbulence and 10 is high turbulence

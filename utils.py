@@ -113,18 +113,15 @@ def get_recruited_corals(available_substrate_percentage, pop_flag = True):
 
         # Start from base fertilisation rate and reduce if suspended sediment present
 		eggs_fert_rate_this_year = opts.eggs_fertilisation_rate
-		if add_suspended_in_month > 0:#Only apply sediment effect when there is a positive suspended sediment value.
-			#coeff = globals().get('sedi_exp_fertilisation_coeff', {}).get('spawner', 0.0)
-			coeff = globals().get('sedi_exp_fertilisation_coeff', {}).get('spawner')
-            # use fertilisation-specific susceptibility from user inputs
-			#susc = globals().get('sediment_susceptibilityF', 1.0)
-			susc = globals().get('sediment_susceptibilityF')
-            # apply coeff * add_suspended_in_month * susceptibility so effect scales with sediment magnitude
+		if add_suspended_in_month > 0:#Only apply sediment effect when there is a positive additional suspended sediment value.
 			
-			raw = 1+(coeff * add_suspended_in_month * susc) ###
-			###raw = 1 - ((-1*coeff) * add_suspended_in_month * susc) #alternative way to write above line
-			### 100% - ( -1 *coeff*suspended sediment * susc) so coeff is negative and effect reduces fertilisation rate from 100%
-			factor = max(0.0, min(1.0, raw))#Clamp the factor into [0.0, 1.0] so it cannot be negative or amplify above 1.
+			coeff = globals().get('sedi_exp_fertilisation_coeff', {}).get('spawner')
+
+			susc = globals().get('sediment_susceptibilityF')
+            #coeff is negative 
+			raw = max(-1, min(0, coeff * add_suspended_in_month))  # Clamp to [-1, 0] to avoid over-reduction
+			effective =max(-1, min(0,raw *susc))
+			factor = max(0, min(1, 1+effective))  # 100% - relative decline in fertilization = percentage of eggs fertalised # Clamp to [0, 1] to avoid negative or amplified rates
 			eggs_fert_rate_this_year *= factor
 
         # Apply fertilisation rate to each spawner egg pool
@@ -1949,14 +1946,36 @@ def get_PCM_rates_after_DS_exp(PCM_rates, add_sedi_exp_per_year, year, sedi_exp_
 
     pcm_rates_ds = pd.DataFrame(columns=PCM_rates.columns)
     add_deposited_sediment = add_sedi_exp_per_year.get(year, (0, 0))[1]
+    susc = float(globals().get('sediment_susceptibilityPCM'))
 
     for coral_type in PCM_rates.columns:
-        coeff = sedi_exp_PCM_coeff.get(coral_type, 0)
+		# #pcm coeff positive 
+        coeff = sedi_exp_PCM_coeff.get(coral_type, 0) # get coefficient for coral type
         adjusted_rates = []
         for base_rate in PCM_rates[coral_type]:
-            # Ensure PCM is always between 0 and 1
-            adjusted_rate = base_rate + (base_rate* coeff * add_deposited_sediment* sediment_susceptibilityPCM)
-            adjusted_rate = max(0, min(adjusted_rate, 1))
+        #     raw=max(0, min (1,coeff * add_deposited_sediment))
+        #     factor=max(0, min (1, raw* sediment_susceptibilityPCM))
+        #     adjusted_rate = max(0, min( 1,base_rate +(base_rate* factor)))# clamp between 0 and 1
+        #     adjusted_rates.append(adjusted_rate)
+        # pcm_rates_ds[coral_type] = adjusted_rates
+		            # linear effect (coeff * additional sediment), clamp to [0,1]
+            raw = coeff * add_deposited_sediment
+            raw = float(np.clip(raw, 0.0, 1.0))
+
+        # effective impact after susceptibility
+            effective = raw * susc
+
+        # absolute additive change (PCM is an absolute probability increment)
+            adjusted_rate = base_rate + effective ### this one 
+			#OR
+            #adjusted_rate= base_rate + (base_rate * effective)
+
+        # another option: proportional change (use to scale base_rate)
+        #    adjusted_rate = base_rate * (1.0 + effective)#? - effective 
+        #    adjusted_rate = base_rate * (1.0 - effective)
+        # final clamp to valid probability range [0,1]
+            adjusted_rate = float(np.clip(adjusted_rate, 0.0, 1.0))
+
             adjusted_rates.append(adjusted_rate)
         pcm_rates_ds[coral_type] = adjusted_rates
 
@@ -2013,29 +2032,16 @@ def get_GR_after_ss(growth_rate, add_sedi_exp_per_year, year, sedi_exp_growth_co
 
 	growth_rate_ss = pd.DataFrame(columns=growth_rate.columns)
 	add_suspended_sediment = add_sedi_exp_per_year.get(year, (0, 0))[0]
-###removing below because increased SS increases GR
-    # for coral in growth_rate.columns:
-    #     coeff = sedi_exp_growth_coeff.get(coral, 0)
-    #     adjusted_rates = []
-    #     for base_rate in growth_rate[coral]:
-    #         # Incorporate sediment_susceptibility if needed
-    #         adjusted_rate = base_rate - (base_rate * (coeff * add_suspended_sediment * sediment_susceptibility))
-	# 		#adjusted_rate = base_rate - (base_rate * (coeff * add_suspended_sediment * sediment_susceptibility/100))
-    #         adjusted_rate = max(0, min(adjusted_rate, base_rate))
-    #         adjusted_rates.append(adjusted_rate)
-    #     growth_rate_ss[coral] = adjusted_rates
-###
+
 	for coral in growth_rate.columns:
 		coeff = sedi_exp_growth_coeff.get(coral, 0)
 		adjusted_rates = []
 		for base_rate in growth_rate[coral]:
 			# compute raw multiplicative factor then clamp to [0.0, 1.0]
-			raw = 1.0 + coeff * add_suspended_sediment * sediment_susceptibilityGR
-			factor = max(0.0, min(1.0, raw))
-			
-			#factor = max(0.0, 1.0 + coeff * add_suspended_sediment * sediment_susceptibilityGR)
-			adjusted_rate = base_rate * factor # apply the factor to the base growth rate for this bin
-			adjusted_rate = max(0.0, adjusted_rate) # clamp adjusted_rate to be >= 0.0 (prevent negative growth)
+			raw = max(-1, min(0,coeff * add_suspended_sediment))
+			effective =  max(-1, min(0,raw * sediment_susceptibilityGR))
+			factor = max(0.0, min(1.0, 1+ effective))
+			adjusted_rate = max(0.0, base_rate * factor) # clamp adjusted_rate to be >= 0.0 (prevent negative growth)
 			adjusted_rates.append(adjusted_rate)
 		growth_rate_ss[coral] = adjusted_rates
 	return growth_rate_ss

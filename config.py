@@ -302,9 +302,12 @@ else:
 
 #sediment exposure partial mortality relationships for each morphology 
 sedi_exp_PCM_coeff = {
-    'Branching': 0.3296,
-    'Foliose': 0.0724, 
-    'Other': 0.1645         
+    'Branching': 0.00154,
+    'Foliose': 0.000724, 
+    'Other': 0.001645  
+    # 'Branching': 0.154,
+    # 'Foliose': 0.0724, 
+    # 'Other': 0.1645        
 }
 
 
