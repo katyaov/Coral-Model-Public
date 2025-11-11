@@ -9,7 +9,7 @@ import pandas as pd
 
 growthOnly = False
 no_recruitment = False
-number_of_iterations = 100 #you can choose how many times to run the model (100 times is recommended)
+number_of_iterations = 10 #you can choose how many times to run the model (100 times is recommended)
 
 # choose from ['protected','semiprotected','exposed']
 reef_exposure = 'protected'
@@ -73,7 +73,7 @@ other_cyclone_coefficient_input = 0.3
 # choose between using your own custom parameters and the default parameters. To use
 # your own custom parameters, set the use_custom variable to True. If using ANY own parameters, include an Excel table filled using the custom_user_input template in the working directory
 #-------------------------------------------------------------------------------------
-use_custom_coral_population_size_distribution = True #custom is IP >5m chronic. default is indopacific <5m clearwater
+use_custom_coral_population_size_distribution = True # if false reef parameters: region, regime, and depth (defined further down will be used to define default PSD) #OLD:custom is IP >5m chronic. default is indopacific <5m clearwater
 use_custom_partial_mortality_rate = False
 use_custom_whole_mortality_rate = False
 use_custom_growth_rate = True
@@ -87,14 +87,53 @@ excel_path = 'coral_data_and_custom_parameters.xlsx'
 # 1. Load real coral cover data
 real_df = pd.read_excel(excel_path, sheet_name='Real_Cover')
 
-# 2. Load PSD from 'Custom_PSD_T0'
-psd_df = pd.read_excel(excel_path, sheet_name='Population_size_distribution')
-custom_PSD_T0 = {
-    'Bins': psd_df['Bins'].tolist(),
-    'Branching': psd_df['Branching'].tolist(),
-    'Foliose': psd_df['Foliose'].tolist(),
-    'Other': psd_df['Other'].tolist()
-}
+# 2. Load PSD from 'Custom_PSD_T0' OR input reef parameters to select default PSD
+
+custom_PSD_T0 = None
+if use_custom_coral_population_size_distribution:
+    psd_df = pd.read_excel(excel_path, sheet_name='Population_size_distribution')
+    custom_PSD_T0 = {
+        'Bins': psd_df['Bins'].tolist(),
+        'Branching': psd_df['Branching'].tolist(),
+        'Foliose': psd_df['Foliose'].tolist(),
+        'Other': psd_df['Other'].tolist()
+    }
+
+#-------------------------------------------------------------------------------------
+# If use_custom_coral_population_size_distribution is False, these parameters
+# are used to select an appropriate default population size distribution (PSD).
+#
+# reef_regime options:
+#   'clear'       : clear-water reef (no acute disturbance in >3 years)
+#   'fluctuating' : fluctuating turbidity (no acute disturbance in >3 years)
+#   'turbid'      : chronically turbid reef (no acute disturbance in >3 years)
+
+#
+# reef_depth options:
+#   '<5m'   : shallow reef (< 5 m)
+#   '5-10m' : mid-depth reef (5–10 m)
+#
+# reef_region options:
+#   'IP'        : Indo-Pacific
+#   'Caribbean' : Caribbean
+
+
+# reef_recent_event_type options:
+#   'none'      : no acute disturbance in the past 3 years
+#   'bleaching' : reef has experienced a bleaching event in the past 3 years
+#   'cyclone'   : reef has experienced a cyclone in the past 3 years
+
+#-------------------------------------------------------------------------------------
+reef_regime = 'clear'
+
+reef_depth = '<5m'          
+
+reef_region = 'IP'
+
+reef_recent_event_type = 'none' 
+
+
+
 
 # 3. Load Partial Mortality Rates
 pmr_df = pd.read_excel(excel_path, sheet_name='Partial_Mortality')
