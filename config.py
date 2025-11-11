@@ -68,7 +68,8 @@ brooder_survival_rates = [0.27, 0.61, 0.63, 0.65] #yearly rates
 spawner_branching_survival_rates = [0.81, 0.93, 0.88, 0.9]
 spawner_other_survival_rates = [0.865, 0.83, 0.91, 0.925]
 
-if not use_custom_coral_population_size_distribution:
+if not use_custom_coral_population_size_distribution: #clearwater Indopacific <5m deep reef
+
     PSD_T0 = pd.DataFrame({
     'Bins':[5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100],    
      'Branching': [1.0, 8.5, 11.5, 10.2, 9.3, 8.4, 7.5, 6.6, 5.7, 4.7, 3.8, 3.2, 3.0, 2.9, 2.7, 2.5, 2.4, 2.2, 2.1, 1.9],
@@ -317,13 +318,6 @@ sedi_exp_growth_coeff = {
     'Other': -0.00533
 }         
 
-
-
-#sediment exposure settlement relationships for spawners and brooders
-sedi_exp_settlement_coeff = {
-    'spawner': -1.0609,
-    'brooder': -0.2129      
-}
 
 #sediment exposure fertilisation relationships for spawners and brooders
 sedi_exp_fertilisation_coeff = {

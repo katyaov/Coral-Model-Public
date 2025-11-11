@@ -9,14 +9,14 @@ import pandas as pd
 
 growthOnly = False
 no_recruitment = False
-number_of_iterations = 20 #you can choose how many times to run the model (100 times is recommended)
+number_of_iterations = 100 #you can choose how many times to run the model (100 times is recommended)
 
 # choose from ['protected','semiprotected','exposed']
 reef_exposure = 'protected'
 
 #-------------------------------------------------------------------------------------
 #Rugosity
-Initial_Rugosity          = 1.2
+Initial_Rugosity          = 1.4
 
 #Total reef area (m2)
 reef_area                 = 10000
@@ -31,23 +31,23 @@ MaxYear = year_end - year_start        # Number of years we want to calculate
 
 #-------------------------------------------------------------------------------------
 # benthic cover (%)
-hard_substrate_cover = 2.4
-dead_coral_cover= 4
-CCA_cover = 0.8
-turfing_algae_cover = 36.1
-macro_algae_cover = 36.8
-rubble_cover = 4
-sediment_cover = 5
+hard_substrate_cover = 1
+dead_coral_cover= 1
+CCA_cover = 8.4
+turfing_algae_cover = 62.4
+macro_algae_cover = 5.5
+rubble_cover = 1
+sediment_cover = 1
 
-# initial_brooder_cover = 4.61
-initial_brooder_cover = 1
-# initial_spawner_cover = [43.8, 16.6]  # the first element is B+F and the second element is O
-initial_spawner_cover = [9.9,7]  # the first element is B+F and the second element is O
 
-# initial_coral_cover = {'Branching':7.38, 'Foliose':41.03, 'Other':16.6}
+initial_brooder_cover = 0.6
 
-initial_coral_cover = {'Branching':2.6, 'Foliose':7.3, 'Other':8}
-#initial_coral_cover = {'Branching':1, 'Foliose':3, 'Other':4}
+initial_spawner_cover = [2.8,16.3]  # the first element is B+F and the second element is O
+
+
+
+initial_coral_cover = {'Branching':6, 'Foliose':24, 'Other':6}
+
 initial_total_coral_cover = sum(initial_coral_cover.values())
 
 #----------------------------------------------------------------------------------------
@@ -73,9 +73,9 @@ other_cyclone_coefficient_input = 0.3
 # choose between using your own custom parameters and the default parameters. To use
 # your own custom parameters, set the use_custom variable to True. If using ANY own parameters, include an Excel table filled using the custom_user_input template in the working directory
 #-------------------------------------------------------------------------------------
-use_custom_coral_population_size_distribution = True
-use_custom_partial_mortality_rate = True
-use_custom_whole_mortality_rate = True
+use_custom_coral_population_size_distribution = True #custom is IP >5m chronic. default is indopacific <5m clearwater
+use_custom_partial_mortality_rate = False
+use_custom_whole_mortality_rate = False
 use_custom_growth_rate = True
 bleaching = False
 cyclone = False
@@ -132,8 +132,9 @@ cyclone_years = {
 
 # 8. Load Sediment Exposure
 # Typical clear water oligatrophic reef has suspended sediment < 5 mg/L (<15NTU) (Zweifler et al., 2024) and deposited sediment < 10 mg/cm^-2/day (Rogers 1990, Dutra et al., 2006, Falsarella et al., 2025), these can be used to inform the default baseline values.
+#Rogers 1990 observed that ‘normal,’ background levels of sediment on coral reefs are on the order of 10 mg/cm2/day for deposition rates and 10 mg/L for total suspended sediment concentrations, above which are considered ‘high’ with the potential to adversely affect corals.
 baseline_suspended_sediment = 5
-baseline_deposited_sediment = 10
+baseline_deposited_sediment = 15 #10
 
 sediment_df = pd.read_excel(excel_path, sheet_name='Sediment_Exposure')
 sedi_years = {
@@ -152,7 +153,7 @@ sediment_susceptibilityF = 1 #only impacts additional suspended sediment effects
 
 #Reproduction - these values are only required if enable_sediment_exposure is True
 spawning_month_known = True # if spawning month is known, set to True. If not, set to False
-spawning_month = 1 # if spawning month is known, set the month number (1-12). 
+spawning_month = 4 # if spawning month is known, set the month number (1-12). 
 
 #### PLACE HOLDER for water energy scale/slider 
 # turbulence_scale = 1 # scale from 1 to 10, where 1 is low turbulence and 10 is high turbulence
