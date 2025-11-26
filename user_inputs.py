@@ -1,3 +1,4 @@
+#A1 Myrmidon base condition 12112025
 ## User input values                   
 ## All units are (cm) or (%) unless otherwise is mentioned 
 
@@ -16,37 +17,37 @@ reef_exposure = 'protected'
 
 #-------------------------------------------------------------------------------------
 #Rugosity
-Initial_Rugosity          = 1.4
+Initial_Rugosity          = 1.6
 
 #Total reef area (m2)
-reef_area                 = 10000
-reef_shape                = 3 # 1-12 based of Black et al 1990 #reef morphological types into one of three retention categories (low = 1, 12; medium = 2, 5, 6, 11; high  = 3, 4, 7, 8, 9, 10)
+reef_area                 = 1000
+reef_shape                = 5 # 1-12 based of Black et al 1990 #reef morphological types into one of three retention categories (low = 1, 12; medium = 2, 5, 6, 11; high  = 3, 4, 7, 8, 9, 10)
 
 
 #start and end years
-year_start                = 2005
-year_end                  = 2025
+year_start                =2011
+year_end                  =2031
 
 MaxYear = year_end - year_start        # Number of years we want to calculate
 
 #-------------------------------------------------------------------------------------
 # benthic cover (%)
-hard_substrate_cover = 1
-dead_coral_cover= 1
-CCA_cover = 8.4
-turfing_algae_cover = 62.4
-macro_algae_cover = 5.5
+hard_substrate_cover = 0
+dead_coral_cover= 0
+CCA_cover = 14.3
+turfing_algae_cover = 51.7
+macro_algae_cover = 7
 rubble_cover = 1
-sediment_cover = 1
+sediment_cover = 6.4
 
 
-initial_brooder_cover = 0.6
+initial_brooder_cover = 1.2
 
-initial_spawner_cover = [2.8,16.3]  # the first element is B+F and the second element is O
+initial_spawner_cover = [5.7,20.3]  # the first element is B+F and the second element is O
 
 
 
-initial_coral_cover = {'Branching':6, 'Foliose':24, 'Other':6}
+initial_coral_cover = {'Branching':2, 'Foliose':2.1, 'Other':18.3}
 
 initial_total_coral_cover = sum(initial_coral_cover.values())
 
@@ -73,7 +74,7 @@ other_cyclone_coefficient_input = 0.3
 # choose between using your own custom parameters and the default parameters. To use
 # your own custom parameters, set the use_custom variable to True. If using ANY own parameters, include an Excel table filled using the custom_user_input template in the working directory
 #-------------------------------------------------------------------------------------
-use_custom_coral_population_size_distribution = True # if false reef parameters: region, regime, and depth (defined further down will be used to define default PSD) #OLD:custom is IP >5m chronic. default is indopacific <5m clearwater
+use_custom_coral_population_size_distribution = False # if false reef parameters: region, regime, and depth (defined further down will be used to define default PSD) #OLD:custom is IP >5m chronic. default is indopacific <5m clearwater
 use_custom_partial_mortality_rate = False
 use_custom_whole_mortality_rate = False
 use_custom_growth_rate = True
@@ -130,7 +131,7 @@ reef_depth = '<5m'
 
 reef_region = 'IP'
 
-reef_recent_event_type = 'none' 
+reef_recent_event_type = 'cyclone' 
 
 
 
@@ -192,7 +193,7 @@ sediment_susceptibilityF = 1 #only impacts additional suspended sediment effects
 
 #Reproduction - these values are only required if enable_sediment_exposure is True
 spawning_month_known = True # if spawning month is known, set to True. If not, set to False
-spawning_month = 4 # if spawning month is known, set the month number (1-12). 
+spawning_month = 11 # if spawning month is known, set the month number (1-12). 
 
 #### PLACE HOLDER for water energy scale/slider 
 # turbulence_scale = 1 # scale from 1 to 10, where 1 is low turbulence and 10 is high turbulence
