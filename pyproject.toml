@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "coral_model"
+version = "0.2.0"
+description = "Coral Growth/Decline Model"
+authors = [
+  { name="Dagmawi Tadesse", email="dagmawi.tadesse@curtin.edu.au" },
+]
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "numpy",
+    "pandas",
+    "matplotlib",
+    "openpyxl",
+    "seaborn",
+    "plotly",
+    "flask",
+    "jupyter>=1.1.1",
+    "pyyaml>=6.0.3",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "jupyterlab",
+    "black",
+    "isort"
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]

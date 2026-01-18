@@ -1,0 +1,15 @@
+README.md
+pyproject.toml
+src/coral_model/__init__.py
+src/coral_model/core.py
+src/coral_model/dynamics.py
+src/coral_model/parameters.py
+src/coral_model/utils.py
+src/coral_model/visualization.py
+src/coral_model.egg-info/PKG-INFO
+src/coral_model.egg-info/SOURCES.txt
+src/coral_model.egg-info/dependency_links.txt
+src/coral_model.egg-info/requires.txt
+src/coral_model.egg-info/top_level.txt
+tests/test_dynamics.py
+tests/test_model.py

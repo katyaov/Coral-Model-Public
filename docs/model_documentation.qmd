@@ -1,0 +1,818 @@
+---
+title: "Coral Growth & Decline Model Documentation"
+author: "Dagmawi Tadesse & Nicola Browne"
+format:
+  html:
+    theme: cosmos
+    toc: true
+    code-fold: true
+    self-contained: true
+    html-math-method: katex
+jupyter: coral-env
+---
+
+# List of Symbols
+
+The following symbols are used throughout this document to describe the mathematical model of coral reef dynamics.
+
+| Symbol | Description | Unit / Range |
+| :--- | :--- | :--- |
+| $\mathcal{A}$ | Total area of the coral reef simulation | $m^2$ |
+| $A_{ij}$ | Area of a single coral colony of type $j$ in bin $i$ | $m^2$ |
+| $\mathcal{A}_k^\mathrm{av}$ | Available substrate area for recruitment at year $k$ | $m^2$ |
+| $A_{k}[\%]$ | Total coral cover percentage at year $k$ | $\%$ |
+| $A^\mathrm{max}_{k}[\%]$ | Maximum habitable substrate percentage | $\%$ |
+| $b$ | Bin size width (diameter interval) | $cm$ |
+| $B_j$ | Bleaching sensitivity coefficient for coral type $j$ | Dimensionless |
+| $C^{\mathrm{e}}$ | Cyclone reef exposure coefficient | $0.25 - 1.0$ |
+| $C_j$ | Cyclone sensitivity coefficient for coral type $j$ | $0.5 - 0.9$ |
+| $C^{\mathrm{s}}$ | Cyclone severity level | $1 - 5$ |
+| $d$ | Coral colony diameter | $cm$ |
+| $\bar{d}_{i}$ | Effective diameter of corals in bin $i$ (RMS) | $cm$ |
+| $\widetilde{d}_{ijk}$ | Updated diameter of corals in bin $i$, type $j$ at year $k$ | $cm$ |
+| $DHW, T$ | Degree Heating Weeks (Thermal Stress) | $^\circ C$-weeks |
+| $G_{ij}$ | Annual growth rate for coral type $j$ in bin $i$ | $cm \cdot year^{-1}$ |
+| $i$ | Bin index identifier | Integer ($0 \dots N$) |
+| $j$ | Coral functional type index (Branching, Foliose, Other) | Integer ($0 \dots 2$) |
+| $k$ | Simulation year index | Integer |
+| $L$ | Distance to cyclone eye | $km$ |
+| $m$ | Space limitation component | Dimensionless |
+| $M_{ij}^p$ | Partial Colony Mortality (PCM) rate | $0 \le M < 1$ (fraction) |
+| $M_{ij}^w$ | Whole Colony Mortality (WCM) rate | $0 \le M < 1$ (fraction)|
+| $N_{ijk}$ | Number of coral colonies of type $j$ in bin $i$ at year $k$ | Integer |
+| $N^\mathrm{R}_{jk}$ | Number of recruited corals of type $j$ at year $k$ | Integer |
+| $p_j$ | Surface roughness parameter (1 = flat) | Dimensionless |
+| $\eta$ | Random noise for settlement rates | Dimensionless |
+| $\rho_l$ | Egg density for spawner group $l$ | $eggs \cdot m^{-2}$ |
+| $\chi_{ij0}$ | Initial population fraction of type $j$ in bin $i$ | Fraction |
+
+# Introduction
+
+Coral reefs are among the most biologically diverse ecosystems on Earth, providing critical ecological, economic, and social benefits. They serve as habitats for an estimated 25% of all marine species, offer coastal protection from storms, and support millions of livelihoods. However, these systems are increasingly threatened by global stressors such as ocean warming (leading to bleaching) and local stressors like cyclones and pollution.
+
+This document serves as the comprehensive reference for the **Coral Growth/Decline Model**, a size-structured mathematical simulation designed to predict the future trajectories of coral populations. The model leverages observational data (coral counts and sizes) from a representative reef area to simulate dynamics at scale. It integrates the core biological processes of **growth**, **mortality** (partial and whole), and **recruitment**, while explicitly modeling the impacts of **thermal stress (bleaching)** and **cyclonic events**.
+
+The model focuses on three key coral functional groups:
+1.  **Branching** (Fast growing, susceptible to mechanical damage)
+2.  **Foliose** (Plate-like structures)
+3.  **Other** (Massive and Encrusting forms)
+
+# Model Overview
+
+The model operates on an annual time step. At each step, the population evolves through a sequence of biological processes impacted by environmental conditions.
+
+```{mermaid}
+graph TD
+    Start("Start Year k") --> Env["Update Environment<br/>DHW, Cyclones"]
+    Env --> Recruit["Recruitment<br/>Add new colonies to Bin 0"]
+    Recruit --> Rates["Calculate Rates<br/>Growth, PCM, WCM"]
+    Rates --> Growth["Growth & Partial Mortality<br/>Update Diameters"]
+    Growth --> WCM["Whole Colony Mortality<br/>Remove Colonies"]
+    WCM --> Rebin["Re-binning<br/>Update Population Structure"]
+    Rebin --> Metrics["Calculate Metrics<br/>Cover %, Available Substrate"]
+    Metrics --> Check{"End Year?"}
+    Check -->|No| Start
+    Check -->|Yes| End("End Simulation")
+
+    style Start fill:#f9f,stroke:#333,stroke-width:2px
+    style End fill:#f9f,stroke:#333,stroke-width:2px
+    style Env fill:#e1f5fe
+    style Recruit fill:#fff9c4
+    style Growth fill:#ffe0b2
+    style WCM fill:#ffcdd2
+```
+
+## Coral Reef Simulation Without External Stressors
+
+### 1. Geometry and Binning
+
+The model categorizes the continuous distribution of coral sizes into discrete bins. Consider a coral reef with total area $\mathcal{A}$ ($m^2$). Corals are assigned to bins based on their diameter $d$. Given a bin width $b$ (default: 5 cm), the bin index $i$ for a coral of diameter $d$ is:
+
+$$ i = \left\lceil \frac{d}{b} \right\rceil - 1 $$
+
+*   **Bin 0**: $(0, b]$
+*   **Bin 1**: $(b, 2b]$
+*   ...
+*   **Bin N**: $(Nb, (N+1)b]$
+
+To accurately estimate the coral cover area from discrete bins, we define the **effective diameter** $\bar{d}_{i}$ of bin $i$ as the Root Mean Square (RMS) of the bin's lower and upper bounds. This accounts for the quadratic relationship between diameter and area:
+
+$$
+\bar{d}_{i} = \sqrt{\frac{(ib)^2 + ((i+1)b)^2}{2}}
+$$
+
+The planar area of a single coral colony in bin $i$ of type $j$ is then:
+
+$$
+a_{ij} = \frac{\pi p_j}{4} \bar{d}_{i}^2
+$$
+
+where $p_j$ is the **surface roughness parameter**. In this model, we assume $p_j = 1$, treating corals as flat projections on the substrate.
+
+### 2. Initialization and Population Estimation
+
+The model requires an initial population count $N_{ij0}$ for every bin and text. However, field data often provides relative size frequency distributions (SFD) for a small sample area. The model initializes by extrapolating this sample to the full reef area $\mathcal{A}$ to match a specific initial coral cover percentage.
+
+**Process:**
+1.  **Input**: Relative abundance $\chi_{ij0}$ (fraction of population in each bin) and target initial cover $A_{j0}[\%]$.
+2.  **Estimation**: An iterative numerical method solves for the total population $N_{j0}$ that satisfies the cover constraint.
+
+```{mermaid}
+graph TD
+    Input["Input: Sample Counts & Target Cover"] --> CalcDist["Calculate Relative Distribution<br/>χ_ij0"]
+    CalcDist --> Guess["Initial Guess Total Pop<br/>N_est"]
+    Guess --> Distrib["Distribute Population<br/>n_est = N_est * χ_ij0"]
+    Distrib --> CalcArea["Calculate Estimated Cover %<br/>A_est"]
+    CalcArea --> Check{"Converged?<br/>|A_est - Target| < ε"}
+    Check -->|No| Update["Update Total Pop<br/>N_est = N_est * Target/A_est"]
+    Update --> Distrib
+    Check -->|Yes| Final["Final Population<br/>N_j0 = Round: N_est"]
+    
+    style Input fill:#d1c4e9
+    style Final fill:#c8e6c9
+```
+
+### 3. Growth and Partial Colony Mortality
+
+Growth and Partial Colony Mortality (PCM) act simultaneously on the colony diameter. PCM represents tissue loss that effectively shrinks the colony size, while growth increases it.
+
+The updated diameter $\widetilde{d}_{ijk}$ at year $k$ is calculated as:
+
+$$
+\widetilde{d}_{ijk} = d_{ijk-1}\sqrt{1-\mathrm{M}_{ij}^p} + \mathrm{G}_{ij} \left[1 - \left(\frac{A_{k-1}}{A^\mathrm{max}_{k-1}}\right)^m \right] \sqrt{1-\mathrm{M}_{ij}^p}\Delta t
+$$
+
+#### Key Components:
+*   **Partial Mortality Term**: $d \sqrt{1-\mathrm{M}_{ij}^p}$. This reduces the diameter based on the mortality rate fraction.
+*   **Growth Term**: $\mathrm{G}_{ij} \Delta t$. The base extension rate (cm/year).
+*   **Density Dependence**: $\left[1 - \left(\frac{A_{k-1}}{A^\mathrm{max}_{k-1}}\right)^m \right]$. As the total coral cover $A_{k-1}$ approaches the maximum habitable area $A^\mathrm{max}$, growth slows to zero. This simulates space competition. $m$ is a configurable parameter (Default: 1.0).
+
+#### Visualizing Cohort Movement
+
+Instead of tracking individual coral colonies, the model tracks **cohorts**—groups of corals within a specific size range (bin). In each timestep, the entire cohort "moves" along the size axis.
+ 
+1.  **Shift**: Biological processes change the effective diameter of the cohort. Growth pushes the distribution to the right (larger sizes), while Partial Colony Mortality pushes it left (shrinking).
+2.  **Re-bin**: The transformed cohort, which may now span multiple bins, is mathematically redistributed into the fixed model bins for the next year.
+
+**Example**: A cohort starting in **Bin 1 (5-10cm)** grows significantly. In the next year, its members have sizes ranging from **9-18cm**. These are then distributed into **Bin 1 (Overlap)**, **Bin 2 (10-15cm)**, and **Bin 3 (15-20cm)**.
+
+```{mermaid}
+graph TD
+    subgraph Step1 ["Step 1: Initial State (Year k)"]
+        Bin1["Bin 1: 5-10cm<br/>Population: 100"]
+    end
+
+    Bin1 -->|"Growth & Partial Mortality"| Grown
+
+    subgraph Step2 ["Step 2: Biological Change"]
+        Grown["New Cohort Size Range: 9-18cm"]
+    end
+
+    Grown -->|"Re-distribute"| NewBin1
+    Grown --> NewBin2
+    Grown --> NewBin3
+
+    subgraph Step3 ["Step 3: Re-binning (Year k+1)"]
+        NewBin1["Bin 1: 5-10cm<br/>(e.g., 20 remaining)"]
+        NewBin2["Bin 2: 10-15cm<br/>(e.g., 60 promoted)"]
+        NewBin3["Bin 3: 15-20cm<br/>(e.g., 20 promoted)"]
+    end
+    
+    style Bin1 fill:#e1f5fe,stroke:#0277bd,stroke-width:2px
+    style Grown fill:#fff9c4,stroke:#fbc02d,stroke-width:2px,stroke-dasharray: 5 5
+    style NewBin1 fill:#c8e6c9
+    style NewBin2 fill:#c8e6c9
+    style NewBin3 fill:#c8e6c9
+```
+
+### 4. Whole Colony Mortality (WCM)
+
+Whole Colony Mortality removes discrete individuals from the population (e.g., due to disease, predation, or storm detachment). 
+
+The number of surviving colonies is:
+
+$$
+\overset{\approx}{N}_{ijk} = \widetilde{N}_{ijk}\left(1-\mathrm{M}_{ij}^w\right)
+$$
+
+The surviving population is then re-distributed into bins according to their new diameters $\widetilde{d}_{ijk}$.
+
+### 5. Recruitment
+
+Recruitment is the process of adding new colonies to the smallest size class (Bin 0, $d \le 5$cm). The model distinguishes between **Brooders** (larvae settle immediately near parents) and **Spawners** (gametes are released into the water column).
+
+#### 5.1 Brooder Recruitment (No External Stressors)
+
+Brooders release planulae larvae that settle locally. The recruitment steps are:
+
+**Step 1: Planulae Release**
+The number of planulae released is proportional to brooder coral cover:
+
+$$
+N^{\mathrm{p}} = \frac{\tilde{A}^\mathrm{b}_k[\%]}{100} \cdot \frac{0.05}{25\,A^{\mathrm{polyp}}[m^2]}
+$$
+
+where:
+- $\tilde{A}^\mathrm{b}_k$ is the brooder cover percentage
+- $A^{\mathrm{polyp}} = 10^{-4}\,m^2$ is the surface area per polyp
+- Baseline production: 0.05 planulae per polyp per spawning event
+
+**Step 2: Larval Settlement**
+Settled larvae depend on available substrate:
+
+$$
+N^\mathrm{ls}_k = N^\mathrm{re}_k\mathrm{R}^\mathrm{s}_\mathrm{l}\mathrm{R}^\mathrm{ls}_k
+$$
+
+where $\mathrm{R}^\mathrm{s}_\mathrm{l}$ is the survival rate and $\mathrm{R}^\mathrm{ls}_k$ is the settlement rate with noise:
+
+$$
+\mathrm{R}^\mathrm{ls}_k = S\left[\exp\left(\frac{A^\mathrm{av}[\%]}{100}\right)-1\right], \quad S=\frac{0.05}{e-1}
+$$
+
+The settlement rate increases exponentially with available substrate. To introduce stochasticity, white noise $\eta$ is added:
+
+$$
+\widetilde{\mathrm{R}}^\mathrm{ls}_k = \mathrm{R}^\mathrm{ls}_k + \eta, \quad \eta \sim \mathcal{U}\left(-\tfrac{1}{2}\mathrm{R}^\mathrm{ls}_k, \tfrac{3}{2}\mathrm{R}^\mathrm{ls}_k\right)
+$$
+
+This formulation ensures the settlement rate is randomized within a range proportional to its base value.
+
+```{python}
+#| code-fold: true
+#| fig-cap: "Settlement rate vs available substrate with and without noise"
+import numpy as np
+import matplotlib.pyplot as plt
+
+# Define parameters
+S = 0.05 / (np.e - 1)
+A_av = np.linspace(0, 100, 1000)
+
+# Base settlement rate
+R_ls_base = S * (np.exp(A_av / 100) - 1)
+
+# Generate noisy settlement rates (sample multiple realizations)
+np.random.seed(42)
+R_ls_noisy = []
+for _ in range(500):
+    noise = np.random.uniform(-0.5 * R_ls_base, 0.5 * R_ls_base)
+    R_ls_noisy.append(R_ls_base + noise)
+
+# Plot
+fig, ax = plt.subplots(figsize=(8, 5))
+ax.plot(A_av, R_ls_base, 'k-', linewidth=2, label='without noise')
+for R_sample in R_ls_noisy[:100]:  # Plot subset for clarity
+    ax.plot(A_av, R_sample, 'r-', alpha=0.05, linewidth=0.5)
+ax.plot([], [], 'r-', alpha=0.5, label='with noise')
+ax.set_xlabel('available substrate (%)', fontsize=12)
+ax.set_ylabel('settlement rate', fontsize=12)
+ax.legend()
+ax.grid(alpha=0.3)
+plt.tight_layout()
+plt.show()
+```
+
+**Step 3: Post-Settlement Survival**
+Survival rates are low and given by $R^\mathrm{s}_\mathrm{l} = 1 \times 0.8 \times 0.4 \times 0.1 \times 0.05$. The number of settled larvae is:
+
+$$
+N^\mathrm{ls}_{lk} = N^\mathrm{re}_{lk}\mathrm{R}^\mathrm{s}_\mathrm{l}\widetilde{\mathrm{R}}^\mathrm{ls}_k
+$$
+
+#### 5.2 Spawner Recruitment (No External Stressors)
+
+Spawner recruitment involves multiple life stages with survival bottlenecks.
+
+**Step 1: Gamete Production**
+The number of eggs produced is proportional to spawner cover and egg density $\rho_l$:
+
+$$
+N^\mathrm{egg}_{lk} = \frac{\tilde{A}^\mathrm{s}_{lk}[\%]}{100} \cdot \mathcal{A} \cdot \rho_l
+$$
+
+where $\rho_l$ = 375 eggs/cm² for Branching/Foliose and 600 eggs/cm² for Other types.
+
+**Step 2: Spawning Success**
+A fraction of eggs are successfully released:
+
+$$
+N^\mathrm{sp}_{lk} = N^\mathrm{egg}_{lk} \cdot \mathrm{R}^\mathrm{sp}_l
+$$
+
+where $\mathrm{R}^\mathrm{sp}_0 \sim \mathcal{U}(0.63, 0.82)$ and $\mathrm{R}^\mathrm{sp}_1 \sim \mathcal{U}(0.55, 0.67)$ for Branching/Foliose and Other, respectively.
+
+**Step 3: Fertilization**
+External fertilization in the water column:
+
+$$
+N^\mathrm{fe}_{lk} = N^\mathrm{sp}_{lk} \cdot \mathrm{R}^\mathrm{f}_l
+$$
+
+where $\mathrm{R}^\mathrm{f}_0 = \mathrm{R}^\mathrm{f}_1 \sim \mathcal{U}(0.41, 0.69)$.
+
+**Step 4: Larval Retention**
+A fraction of fertilized eggs are retained on the reef:
+
+$$
+N^\mathrm{re}_{lk} = N^\mathrm{fe}_{lk} \cdot \mathrm{R}^\mathrm{r}_\mathrm{l} \cdot \mathrm{R}^\mathrm{r}_\mathrm{f}
+$$
+
+**Step 5: Settlement**
+Same settlement process as brooders with noise (see Eq. above).
+
+**Step 6: Post-Settlement Survival**
+The number of recruited spawners undergoes size-dependent survival across 5 diameter classes (1-5cm):
+
+$$
+N^{\mathrm{R,s}}_{lk} = \prod_{d=1}^5 R^\mathrm{sp}_{ld} \cdot N^\mathrm{ls}_{lk}
+$$
+
+where spawner survival rates are:
+- $R^\mathrm{sp}_{0d} = [0.05, 0.81, 0.93, 0.88, 0.9]$ (Branching/Foliose)
+- $R^\mathrm{sp}_{1d} = [0.05, 0.865, 0.83, 0.91, 0.925]$ (Other)
+
+**Step 7: Total Area Calculation**
+Assuming recruited spawners reach a final diameter $d_0 = 5$cm:
+
+$$
+\tilde{A}^\mathrm{R,s}_{lk}[m^2] = \frac{1}{4}\pi d_0^2 N^{\mathrm{R,s}}_{lk}
+$$
+
+#### 5.3 Recruitment Under Bleaching Scenario
+
+The recruitment process under bleaching follows the same procedure as the no-stressor scenario, with adjustments for thermal stress. The number of planulae released and fertilized eggs are scaled by a DHW coefficient, $R^\mathrm{B}_k$:
+
+**Adjusted Planulae Release (Brooders):**
+
+$$
+N^{\mathrm{p}} = \frac{\tilde{A}^\mathrm{b}_k[\%]}{100} \cdot \frac{0.05}{25\,A^{\mathrm{polyp}}[m^2]} \mathrm{R}^\mathrm{B}_k
+$$
+
+**Adjusted Fertilized Eggs (Spawners):**
+
+$$
+\tilde{N}^\mathrm{fe}_{lk} = \frac{\tilde{A}^\mathrm{s}_{lk}[\%]}{100} \cdot \mathcal{A} \cdot \rho_l \mathrm{R}^\mathrm{sp}_l \mathrm{R}^\mathrm{f}_l \mathrm{R}^\mathrm{B}_k
+$$
+
+**DHW Coefficient:**
+The DHW coefficient represents the reproductive suppression due to thermal stress:
+
+$$
+\mathrm{R}^\mathrm{B}_k = 1 - \frac{1}{1 + Be^{(4-T)}}
+$$
+
+where:
+- $T$ is the DHW value (Degree Heating Weeks)
+- $B = 25$ is a scaling constant
+
+**Behavioral Analysis:**
+
+For small $T$ values (mild bleaching), $\mathrm{R}^\mathrm{B}_k \sim 1$, resulting in minimal impact with $N^{\mathrm{p}} \sim N^{\mathrm{p}}$ (normal) and $\tilde{N}^\mathrm{fe}_{lk} \sim N^\mathrm{fe}_{lk}$ (normal).
+
+For large $T$ values (severe bleaching), $\mathrm{R}^\mathrm{B}_k \sim 0$, leading to no release of planulae and fertilized eggs: $N^{\mathrm{p}} \to 0$ and $\tilde{N}^\mathrm{fe}_{lk} \to 0$.
+
+```{python}
+#| code-fold: true
+#| fig-cap: "DHW coefficient with increasing degree of heating weeks"
+import numpy as np
+import matplotlib.pyplot as plt
+
+# Define parameters
+B = 25
+dhw = np.linspace(0, 15, 1000)
+
+# Calculate DHW coefficient
+R_B = 1 - 1 / (1 + B * np.exp(4 - dhw))
+
+# Plot
+fig, ax = plt.subplots(figsize=(7, 5))
+ax.plot(dhw, R_B, 'k-', linewidth=2)
+ax.set_xlabel('dhw', fontsize=12)
+ax.set_ylabel('$R^B_k$', fontsize=14)
+ax.set_xlim(0, 15)
+ax.set_ylim(0, 1.05)
+ax.grid(alpha=0.3)
+ax.axhline(y=1.0, color='gray', linestyle='--', alpha=0.5)
+ax.axhline(y=0.0, color='gray', linestyle='--', alpha=0.5)
+plt.tight_layout()
+plt.show()
+```
+
+As shown in the figure, for small $T$ values (mild bleaching), $\mathrm{R}^\mathrm{B}_k \approx 1$, resulting in minimal impact. For large $T$ values (severe bleaching), $\mathrm{R}^\mathrm{B}_k \to 0$, leading to complete reproductive failure.
+
+## Limiting Cases
+
+Understanding the model behaviors at its boundaries is crucial for validation.
+
+### 1. Space Limitation
+*   **As $A \to A_{max}$**: The growth density dependence factor $(1 - (A/A_{max})^m) \to 0$. Coral growth stops completely.
+*   **As $A_{av} \to 0$**: Recruitment space factor scale $\to 0$. No new recruits can enter the system.
+
+### 2. Thermal Stress (Bleaching)
+*   **As $DHW \to \infty$**:
+    *   **Mortality**: The exponent term $e^{(4 - A_i T)} \to 0$. The partial mortality rate $\widetilde{M}^p \to 1.0$ (100% mortality).
+    *   **Recruitment**: The term $e^{(4-T)} \to 0$. Recruitment multiplier $\to 1 - 1/(1) = 0$. Reproduction ceases.
+
+### 3. Cyclones
+*   **As Cyclone Severity $\to 5$ and Distance $\to 0$**:
+    *   The base exposure term becomes very large.
+    *   Whole Colony Mortality $\widetilde{M}^w \to 1.0$ (Total colony loss/dislodgement).
+
+## Stressor Dynamics
+
+### 1. Bleaching (Thermal Stress)
+
+Mass coral bleaching is triggered by thermal anomalies, quantified as **Degree Heating Weeks (DHW)**.
+
+**Impact on Mortality**:
+High DHW increases the Partial Colony Mortality (PCM) rate. The adjusted rate $\widetilde{\mathrm{M}}_{ij}^p$ is:
+
+$$
+\widetilde{\mathrm{M}}_{ij}^p = \mathrm{M}_{ij}^p + \frac{1 - \mathrm{M}_{ij}^p}{1 + B_j e^{(4 - A_i T)}}
+$$
+
+*   $T$: DHW value.
+*   $A_i$: Bin size factor ($2^{\frac{i - n}{n}}$). Smaller colonies are more vulnerable.
+*   $B_j$: Species sensitivity (Branching: 14, Foliose/Other: 34).
+
+**Acclimatization (Resilience)**:
+With repeated exposure to thermal stress, corals may exhibit increased tolerance. This is modeled by adjusting the bleaching sensitivity coefficient $B_j$ based on the number of past bleaching events $N_{events}$:
+
+$$ B_j' = B_j \times 1.05^{(N_{events}-1)} $$
+
+As the number of events increases, $B_j$ increases, increasing the denominator in the mortality equation, thereby reducing the mortality impact of a given DHW value.
+
+**Impact on Recruitment**:
+Bleaching reduces reproductive output. Recruitment is scaled by:
+
+$$
+\mathrm{R}_k^\mathrm{B} = 1 - \frac{1}{1 + 25 e^{(4 - T)}}
+$$
+
+### 2. Cyclones
+
+Cyclones cause physical damage, resulting in Whole Colony Mortality (WCM). The severity depends on the cyclone category, distance from the reef, and the reef's exposure.
+
+The updated WCM rate is:
+
+$$
+\widetilde{\mathrm{M}}_{ij}^w = \mathrm{M}_{ij}^w + 1 - \frac{1}{1+\alpha C^{\mathrm{e}}C_j C^{\mathrm{s}}\exp\left(-\frac{L}{\beta_i k} \right)}
+$$
+
+*   **Reef Exposure ($C^e$)**: Protected (0.25), Semi-protected (0.5), Exposed (1.0).
+*   **Coral Sensitivity ($C_j$)**: Branching (0.9, High) > Foliose (0.75) > Other (0.5, Low).
+*   **Size Vulnerability ($\beta_i$)**: Larger colonies ($i$) are more susceptible to breakage ($\beta_i \propto i$).
+*   **Distance ($L$)**: Impact decays exponentially with distance.
+
+### 3. Benthic Cover Dynamics
+
+The model tracks the composition of the reef floor (benthos) beyond just live coral cover. The benthic categories are:
+
+*   **Live Coral**: Sum of Branching, Foliose, Other cover.
+*   **Available Substrate** (Habitable for recruitment):
+    *   Hard Substrate (HS)
+    *   Dead Coral (DC)
+    *   Turfing Algae (TA)
+    *   Crustose Coralline Algae (CCA)
+*   **Unavailable Substrate**:
+    *   Macro Algae (MA)
+    *   Rubble
+    *   Sediment
+
+#### 3.1 Mathematical Formulation
+
+The total reef area is partitioned as:
+
+$$
+\mathcal{A} = A_\mathrm{coral} + A_\mathrm{HS} + A_\mathrm{DC} + A_\mathrm{TA} + A_\mathrm{CCA} + A_\mathrm{MA} + A_\mathrm{rubble} + A_\mathrm{sed}
+$$
+
+Or in percentage terms:
+
+$$
+100\% = C_\mathrm{coral} + C_\mathrm{HS} + C_\mathrm{DC} + C_\mathrm{TA} + C_\mathrm{CCA} + C_\mathrm{MA} + C_\mathrm{rubble} + C_\mathrm{sed}
+$$
+
+Available substrate for recruitment:
+
+$$
+C_\mathrm{av} = C_\mathrm{HS} + C_\mathrm{DC} + C_\mathrm{TA} + C_\mathrm{CCA}
+$$
+
+Maximum habitable substrate:
+
+$$
+C_\mathrm{max} = C_\mathrm{av} + C_\mathrm{coral}
+$$
+
+#### 3.2 Benthic Transitions
+
+**Coral Growth Consumes Available Substrate:**
+
+When coral cover increases by $\Delta C_\mathrm{coral} > 0$, it consumes available substrate proportionally:
+
+$$
+\Delta C_\mathrm{HS} = -w_\mathrm{HS} \cdot \Delta C_\mathrm{coral}
+$$
+$$
+\Delta C_\mathrm{DC} = -w_\mathrm{DC} \cdot \Delta C_\mathrm{coral}
+$$
+$$
+\Delta C_\mathrm{TA} = -w_\mathrm{TA} \cdot \Delta C_\mathrm{coral}
+$$
+
+where the weights $w_i$ represent the proportional contribution of each substrate type:
+
+$$
+w_\mathrm{HS} = \frac{C_\mathrm{HS}}{C_\mathrm{av}}, \quad w_\mathrm{DC} = \frac{C_\mathrm{DC}}{C_\mathrm{av}}, \quad w_\mathrm{TA} = \frac{C_\mathrm{TA}}{C_\mathrm{av}}
+$$
+
+This proportional allocation is implemented using the **Proportional Distribution Algorithm** (see Section 3.3).
+
+**Coral Mortality Creates Dead Substrate:**
+
+When coral dies ($\Delta C_\mathrm{coral} < 0$), the fate of the lost cover depends on the mortality cause:
+
+*   **Natural Mortality / Growth Limitation:**
+    $$
+    \Delta C_\mathrm{DC} = |\Delta C_\mathrm{coral}|
+    $$
+    All lost coral becomes dead coral (skeleton intact).
+
+*   **Bleaching Mortality:**
+    $$
+    \Delta C_\mathrm{DC} = 0.7 \cdot |\Delta C_\mathrm{coral}|
+    $$
+    $$
+    \Delta C_\mathrm{TA} = 0.2 \cdot |\Delta C_\mathrm{coral}|
+    $$
+    $$
+    \Delta C_\mathrm{MA} = 0.1 \cdot |\Delta C_\mathrm{coral}|
+    $$
+    Bleaching often facilitates algal overgrowth.
+
+*   **Cyclone Mortality:**
+    $$
+    \Delta C_\mathrm{DC} = f_\mathrm{intact} \cdot |\Delta C_\mathrm{coral}|
+    $$
+    $$
+    \Delta C_\mathrm{rubble} = (1 - f_\mathrm{intact}) \cdot |\Delta C_\mathrm{coral}|
+    $$
+    where $f_\mathrm{intact}$ depends on coral morphology:
+    - Branching/Foliose: $f_\mathrm{intact} = 0.3$ (70% becomes rubble)
+    - Other (Massive): $f_\mathrm{intact} = 0.8$ (20% becomes rubble)
+
+**Rubble Consolidation:**
+
+Over time, rubble stabilizes and converts to dead coral at a rate of $\lambda = 1/6$ per year:
+
+$$
+\frac{dC_\mathrm{rubble}}{dt} = -\lambda C_\mathrm{rubble}, \quad \frac{dC_\mathrm{DC}}{dt} = +\lambda C_\mathrm{rubble}
+$$
+
+In discrete annual steps:
+
+$$
+\Delta C_\mathrm{DC} = 0.167 \cdot C_\mathrm{rubble}
+$$
+$$
+\Delta C_\mathrm{rubble} = -0.167 \cdot C_\mathrm{rubble}
+$$
+
+#### 3.3 Proportional Distribution Algorithm (`split_w`)
+
+The proportional distribution algorithm is a key utility function that distributes a value $w$ among three components $(x, y, z)$ based on their relative proportions to a total $t$. This ensures mass conservation when converting between benthic categories.
+
+**Mathematical Definition:**
+
+Given:
+- $x, y, z$: Current amounts of three substrate types
+- $t = x + y + z$: Total available substrate
+- $w$: Amount to distribute (e.g., coral growth consuming substrate)
+
+Compute:
+
+$$
+w_x = \frac{x}{t} \cdot w, \quad w_y = \frac{y}{t} \cdot w, \quad w_z = \frac{z}{t} \cdot w
+$$
+
+such that $w_x + w_y + w_z = w$ (conservation).
+
+**Edge Case Handling:**
+- If $t = 0$: Return $(0, 0, 0)$ (no substrate available)
+- Floating-point correction: Rescale if $\sum w_i \neq w$ due to numerical precision
+
+**Example Application:**
+
+Suppose:
+- Hard Substrate: $C_\mathrm{HS} = 10\%$
+- Dead Coral: $C_\mathrm{DC} = 15\%$
+- Turf Algae: $C_\mathrm{TA} = 5\%$
+- Total Available: $t = 30\%$
+- Coral Growth: $\Delta C_\mathrm{coral} = 6\%$
+
+Using `split_w(10, 15, 5, 30, 6)`:
+
+$$
+w_\mathrm{HS} = \frac{10}{30} \times 6 = 2\%
+$$
+$$
+w_\mathrm{DC} = \frac{15}{30} \times 6 = 3\%
+$$
+$$
+w_\mathrm{TA} = \frac{5}{30} \times 6 = 1\%
+$$
+
+Verification: $2 + 3 + 1 = 6\%$ ✓
+
+**Code Snippet:**
+
+```{python}
+#| code-fold: true
+def split_w(x: float, y: float, z: float, t: float, w: float):
+    """
+    Proportionally distribute w into components based on x, y, z relative to total t.
+    Used for distributing lost coral cover into benthic components.
+    
+    Args:
+        x, y, z: Individual substrate components
+        t: Total substrate (x + y + z)
+        w: Value to distribute
+        
+    Returns:
+        (w_x, w_y, w_z): Distributed values
+    """
+    if t == 0:
+        return 0.0, 0.0, 0.0
+        
+    x_ratio = x / t
+    y_ratio = y / t
+    z_ratio = z / t
+    
+    w_x = x_ratio * w
+    w_y = y_ratio * w
+    w_z = z_ratio * w
+    
+    # Ensure sum conservation
+    current_sum = w_x + w_y + w_z
+    if current_sum != w and current_sum != 0:
+        factor = w / current_sum
+        w_x *= factor
+        w_y *= factor
+        w_z *= factor
+        
+    return w_x, w_y, w_z
+
+# Example usage
+HS, DC, TA = 10, 15, 5
+total = HS + DC + TA
+growth = 6
+distributed = split_w(HS, DC, TA, total, growth)
+print(f"Coral growth of {growth}% consumes:")
+print(f"  Hard Substrate: {distributed[0]:.2f}%")
+print(f"  Dead Coral: {distributed[1]:.2f}%")
+print(f"  Turf Algae: {distributed[2]:.2f}%")
+print(f"  Total: {sum(distributed):.2f}%")
+```
+
+#### 3.4 Visualization of Benthic Dynamics
+
+The benthic composition can be visualized as a stacked area chart showing the evolution of each component over time.
+
+```{python}
+#| code-fold: true
+#| fig-cap: "Benthic cover dynamics over simulation period"
+from coral_model import CoralModel, CoralParameters, CoralVisualizations
+
+# Run simulation with bleaching event
+params = CoralParameters(
+    year_start=2000, year_end=2050,
+    enable_bleaching=True,
+    dhw_years={25: 15}  # Severe bleaching in 2025
+)
+model = CoralModel(params=params)
+model.run()
+
+# Plot benthic composition
+fig = CoralVisualizations.plot_benthic_stack(model)
+fig.show()
+```
+
+### 4. Rugosity (Structural Complexity)
+
+Rugosity Index (RI) indicates the structural complexity of the 3D reef framework. It is updated annually based on the change in total coral cover ($\Delta C$) and the functional composition of the coral community.
+
+$$ RI_k = RI_{k-1} + m \times \Delta C $$
+
+The slope $m$ (contribution to complexity) depends on the ratio of Branching coral cover to other types:
+
+$$ R = \frac{\text{Branching Cover}}{\text{Foliose} + \text{Other}} $$
+
+*   **Branching Dominant** ($R > 1.0$): $m = 0.0487$ (High complexity contribution)
+*   **Mixed** ($0.1 < R \le 1.0$): $m = 0.0340$
+*   **Massive/Plate Dominant** ($R \le 0.1$): $m = 0.019$ (Low complexity contribution)
+
+### 5. Stochasticity and Ensemble Simulation
+
+The model includes stochastic components, particularly in:
+*   **Recruitment**: Spawning/Fertilization rates are drawn from uniform distributions. Settlement includes random noise.
+*   **Growth Rates**: Annual growth rates include random variations (slopes).
+
+To capture the range of possible reef trajectories, the model should be run in **Ensemble Mode** (Multiple Iterations). This generates a probability distribution of outcomes rather than a single deterministic projection.
+
+$$ \bar{C}_k = \frac{1}{N} \sum_{n=1}^{N} C_{k,n} $$
+
+where $C_{k,n}$ is the cover at year $k$ for iteration $n$.
+
+# Parameters and Constants
+
+The following parameters are used in the simulation. Default values are sourced from the legacy configuration.
+
+| Parameter | Value (Default) | Notes |
+| :--- | :--- | :--- |
+| **Growth Rates** | | cm/year |
+| Branching | $5.4$ | |
+| Foliose | $2.1$ | |
+| Other | $0.8$ | |
+| **Mortality (Base WCM)** | | %/year |
+| Branching | $20.0$ | Highest natural turnover |
+| Foliose | $4.0$ | |
+| Other | $4.0$ | |
+| **Geometry** | | |
+| $\mathcal{A}$ | $1000$ | $m^2$ |
+| Bin Size ($b$) | $5.0$ | $cm$ |
+| Max Bins | $20$ | Max diameter ~100cm |
+| **Recruitment** | | |
+| Egg Density (Branching/Foliose) | $375$ | Eggs/$cm^2$ cover |
+| Egg Density (Other) | $600$ | Eggs/$cm^2$ cover |
+| Space Limit exp $m$ | $1.0$ | |
+
+# Assumptions and Limitations
+
+1.  **Uniform Distribution within Bins**: Corals are assumed to be uniformly distributed in size within each discrete bin.
+2.  **Circular Projections**: Coral colony area is calculated assuming a circular footprint ($Area = \pi r^2$).
+3.  **Flat Projection**: The default surface roughness $p_j = 1$ assumes colonies are flat, ignoring 3D complexity for area calculations.
+4.  **Uniform Reef**: The initial sample distribution from region $\mathcal{R}$ is assumed to be representative of the entire reef $\mathcal{A}$.
+5.  **Closed System (mostly)**: While recruitment includes retention parameters, the model largely behaves as a self-seeding system typical of isolated reefs, though external supply parameters exist.
+
+# Usage Guide
+
+## Running a Basic Simulation
+
+You can run the model with default parameters in just a few lines of code.
+
+```{python}
+from coral_model import CoralModel, CoralParameters, CoralVisualizations
+
+# Initialize with default parameters (2000-2100)
+params = CoralParameters(year_start=2000, year_end=2050)
+model = CoralModel(params=params)
+
+# Run simulation
+model.run()
+
+# Visualize Results
+fig = CoralVisualizations.plot_cover_history(model)
+fig.show()
+```
+
+## Scenario Analysis
+
+We can compare different environmental scenarios, such as the impact of bleaching events.
+
+```{python}
+# Scenario 1: No Disturbance
+params_control = CoralParameters(
+    year_start=2000, year_end=2050,
+    enable_bleaching=False,
+    enable_cyclone=False
+)
+model_control = CoralModel(params_control)
+model_control.run()
+
+# Scenario 2: Severe Bleaching in 2025
+# DHW=20 causes significant mortality
+params_bleach = CoralParameters(
+    year_start=2000, year_end=2050,
+    enable_bleaching=True,
+    enable_cyclone=False,
+    dhw_years={25: 20} 
+)
+model_bleach = CoralModel(params=params_bleach)
+model_bleach.run()
+
+# Compare
+models = {'Control': model_control, 'Bleaching Event': model_bleach}
+fig_comp = CoralVisualizations.compare_scenarios(models)
+fig_comp.show()
+```
+
+## Demographic Analysis
+
+We can drill down into the population structure to see how size classes evolve.
+
+```{python}
+# Visualize Branching Coral Demographics for Control Scenario
+fig_demo = CoralVisualizations.plot_demographic_heatmap(model_control, 'Branching')
+fig_demo.show()
+```
