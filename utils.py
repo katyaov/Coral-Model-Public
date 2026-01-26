@@ -8,19 +8,75 @@ from matplotlib.ticker import FormatStrFormatter, MaxNLocator
 import re
 from datetime import datetime
 from zoneinfo import ZoneInfo 
-
-opts = CoralOptions()
+import random
+#opts = CoralOptions() #this secound coral options instance causes issues when running multiple iterations of the model in a loop from the main script. moved to main script and passed as argument to functions that need it. rio 21092025
 
 try:
-    from user_inputs import bleaching, cyclone
+    from user_inputs import bleaching, cyclone, enable_sediment_exposure
 except Exception:
     bleaching = True  # Default values
     cyclone = True
+    enable_sediment_exposure = True
+
 
 if not hasattr(opts, "bleaching"):
     opts.bleaching = bool(bleaching)
 if not hasattr(opts, "cyclone"):
     opts.cyclone = bool(cyclone)
+###Rio
+
+
+if not hasattr(opts, "enable_sediment_exposure"):
+    opts.enable_sediment_exposure = bool(enable_sediment_exposure)
+
+# safe fallback in case user_inputs/config don't define sediment_susceptibility
+sediment_susceptibilityPCM = globals().get('sediment_susceptibilityPCM', 1.0) ### Rio note: i dont like this i cant fgureout why it cant just acces sediment suscpt from user inputs ... try remove later but for now wont run even with this line 
+sediment_susceptibilityGR = globals().get('sediment_susceptibilityGR', 1.0) ### Rio note: i dont like this i cant fgureout why it cant just acces sediment suscpt from user inputs ... try remove later but for now wont run even with this line 
+sediment_susceptibilityF = globals().get('sediment_susceptibilityF', 1.0) 
+
+# --- Spawn-month-per-run helpers (consistent within run; random between runs when unknown) ---
+_spawn_month_cache = {}
+_current_run_id = None
+
+def initialize_spawn_month_for_run(run_id=None):
+    """
+    Choose and cache a spawn month for a run_id key.
+    - if spawning_month_known == True: use user-specified spawning_month (same for every run)
+    - elif run_id is not None: use deterministic Random(run_id).randint(1,12) so runs differ but are reproducible
+    - else: pick a random month once and cache under key None
+    """
+    key = run_id
+    if key in _spawn_month_cache:
+        return _spawn_month_cache[key]
+
+    if globals().get('spawning_month_known', False):
+        m = int(globals().get('spawning_month', 1))
+    else:
+        if run_id is not None:
+            m = random.Random(run_id).randint(1, 12)
+        else:
+            m = random.randint(1, 12)
+
+    _spawn_month_cache[key] = int(m)
+    return _spawn_month_cache[key]
+
+def set_current_run_id(run_id):
+    """Call at the start of each model run/iteration to fix the spawn month for that run."""
+    global _current_run_id
+    _current_run_id = run_id
+    initialize_spawn_month_for_run(run_id)
+
+def get_spawn_month_for_run(run_id=None):
+    """Return cached spawn month for run_id (initialise if missing)."""
+    key = run_id
+    if key in _spawn_month_cache:
+        return _spawn_month_cache[key]
+    return initialize_spawn_month_for_run(run_id)
+
+def get_spawn_month_current():
+    """Return spawn month for the currently set run (set by set_current_run_id)."""
+    return get_spawn_month_for_run(_current_run_id)
+# --- end spawn-month helpers ---
 
 def get_recruited_corals(available_substrate_percentage, pop_flag = True):
     '''
@@ -39,7 +95,8 @@ def get_recruited_corals(available_substrate_percentage, pop_flag = True):
         A list containing the estimated area or population of different coral species, depending on whether the pop_flag argument is True or False.
 
     '''
-    
+    if no_recruitment:
+        return [0, 0, 0]
     # Calculate the available substrate area for brooders    
     brooder_cover_m2 = opts.brooder_cover*colonies_spawning_decline_rate(opts.current_dhw)*opts.reef_area/100
     brooder_cover_cm2_per_m2 = brooder_cover_m2 * 10000 /opts.reef_area
@@ -74,9 +131,45 @@ def get_recruited_corals(available_substrate_percentage, pop_flag = True):
     spawner_cover_m2 = [cover*opts.reef_area/100 for cover in opts.spawner_cover]
     number_of_eggs = [10000 * eggs_decline_rate(opts.current_dhw) * opts.eggs_density[i] * spawner_cover_m2[i] for i in range(len(spawner_cover_m2))]
     num_eggs_spawning = [number_of_eggs[i]*opts.eggs_spawning_rate[i]* colonies_spawning_decline_rate(opts.current_dhw) for i in range(len(number_of_eggs))]
-    fertilised_eggs = [opts.eggs_fertilisation_rate*eggs for eggs in num_eggs_spawning]
     
-    coeff_retained =  get_retention_rate()
+    # If sediment exposure is disabled, use base fertilisation for all spawners
+    if not getattr(opts, 'enable_sediment_exposure', False):
+        fertilised_eggs = [opts.eggs_fertilisation_rate * eggs for eggs in num_eggs_spawning]
+    else:
+# Determine spawning month: use run-consistent month (fixed for the current run)
+        # set_current_run_id(run_id) must be called before the run to ensure a cached month exists.
+        spawn_month = get_spawn_month_current()
+
+        # Model year index (use opts.year if present, else 0)
+        model_year = int(getattr(opts, 'year', 0))
+
+        # Default: no suspended sediment in that month
+        add_suspended_in_month = 0.0
+        if 'additional_sediment_exposure' in globals():
+            # additional_sediment_exposure[(year, month)] -> (suspended, deposited)
+            add_suspended_in_month = additional_sediment_exposure.get((model_year, spawn_month), (0.0, 0.0))[0]
+        else:
+                # No baseline available -> do not apply suspended-sediment effect
+            add_suspended_in_month = 0.0
+
+        # Start from base fertilisation rate and reduce if suspended sediment present
+        eggs_fert_rate_this_year = opts.eggs_fertilisation_rate
+        if add_suspended_in_month > 0:#Only apply sediment effect when there is a positive additional suspended sediment value.
+            
+            coeff = globals().get('sedi_exp_fertilisation_coeff', {}).get('spawner')
+
+            susc = globals().get('sediment_susceptibilityF')
+            #coeff is negative 
+            raw = max(-1, min(0, coeff * add_suspended_in_month))  # Clamp to [-1, 0] to avoid over-reduction
+            effective =max(-1, min(0,raw *susc))
+            factor = max(0, min(1, 1+effective))  # 100% - relative decline in fertilization = percentage of eggs fertalised # Clamp to [0, 1] to avoid negative or amplified rates
+            eggs_fert_rate_this_year *= factor
+
+        # Apply fertilisation rate to each spawner egg pool
+        fertilised_eggs = [eggs_fert_rate_this_year * eggs for eggs in num_eggs_spawning]
+
+
+    coeff_retained =  get_retention_rate() # retension rate based on reef shape
     eggs_retained = [coeff_retained[i]*fertilised_eggs[i]for i in range(len(fertilised_eggs))]
     
     coeff_survived = [0.84*0.87*0.93*0.94*0.95*0.96*0.965*0.97,0.915**3*0.91]
@@ -109,16 +202,22 @@ def get_recruited_corals(available_substrate_percentage, pop_flag = True):
     total_recruitment_m2 = surfaceArea_brooder_m2 + sum(surfaceArea_spawner_m2)
     total_recruitment_perc = surfaceArea_brooder_percentage + sum(surfaceArea_spawner_percentage)
     
-    if no_recruitment:
-        return [0, 0, 0]
-    
-    else:
-    
-        if pop_flag:
-            return [ int(recruited_branching_population), int(recruited_foliose_population), int(recruited_other_population) ]
+    if pop_flag:
+        return [ int(recruited_branching_population), int(recruited_foliose_population), int(recruited_other_population) ]
 
-        else:
-            return [ recruited_branching_area_m2, recruited_foliose_area_m2, recruited_other_area_m2 ]
+    else:
+        return [ recruited_branching_area_m2, recruited_foliose_area_m2, recruited_other_area_m2 ]
+#below is in the old version before katya 2nd batch of changes 11092025
+    # if no_recruitment:
+    # 	return [0, 0, 0]
+    
+    # else:
+    
+    # 	if pop_flag:
+    # 		return [ int(recruited_branching_population), int(recruited_foliose_population), int(recruited_other_population) ]
+
+    # 	else:
+    # 		return [ recruited_branching_area_m2, recruited_foliose_area_m2, recruited_other_area_m2 ]
 
 
 def get_population_number_from_surface_area(binId, surface_area):
@@ -165,10 +264,10 @@ def get_retention_rate():
     tuple
         A tuple containing two float values representing the retention rates for branching and other coral species, respectively.
     """
-    
-  #  if opts.reef_shape in [7,8,9]: #very high rate
+
+    #  if opts.reef_shape in [7,8,9]: #very high rate
     #    retention_rate_bf = retention_rates_8d[0]
-     #   retention_rate_o = retention_rates_4d[0]
+    #    retention_rate_o = retention_rates_4d[0]
 
     if opts.reef_shape in [3, 4, 7, 8, 9, 10]: # high rates 
         retention_rate_bf = retention_rates_8d[1]
@@ -184,7 +283,7 @@ def get_retention_rate():
 
     else:
         print("Wrong user input for reef shape. Cannot recognize %s as a valid reef shape" , str(opts.reef_shape))
-    
+
     return retention_rate_bf, retention_rate_o
 
 
@@ -530,7 +629,7 @@ def get_initial_surface_area(PSD):
 def estimate_initial_number_of_corals(x_i, reef_area, target_coral_cover):
     """
     Estimates the initial number of corals in the entire reef area based on the given number fraction, reef area,
-    and target coral cover.
+    and target coral cover. Modified version that preserves randomness even after convergence
 
     Parameters:
     ----------
@@ -566,30 +665,23 @@ def estimate_initial_number_of_corals(x_i, reef_area, target_coral_cover):
     # Estimate the coral cover from the calculated areas
     estimate_coral_cover = 100 * np.sum(bin_area) / reef_area
 
-    # Iterate until the coral cover matches the target
+    # Deterministic convergence
     while abs(estimate_coral_cover - target_coral_cover) > 0.001:
-        # Adjust the total number of corals based on the coral cover ratio
         N *= target_coral_cover / estimate_coral_cover
-
-        # Recalculate the number of corals per bin
         n_i = x_i * N / 100
-
-        # Recalculate the bin diameters
-        binId = np.array(np.arange(0, MaxBinId))
-        bin_diameter = get_bin_diameter(binId) / 100
-
-        # Recalculate the area of a single coral in each bin
-        single_coral_area = area_parameter * np.pi * bin_diameter**2 / 4
-
-        # Recalculate the area of each bin based on the new number of corals
         bin_area = n_i * single_coral_area
-
-        # Recalculate the estimated coral cover
         estimate_coral_cover = 100 * np.sum(bin_area) / reef_area
 
-    # Round off the estimated number of corals to the nearest integer
-    return np.round(N)
-
+    # Add controlled random variation to the converged result
+    base_N = N
+    
+    # Random variation: ±2% of the base value (adjust percentage as needed)
+    variation_factor = np.random.normal(1.0, 0.02)  # 2% coefficient of variation
+    
+    # Apply variation and ensure positive result
+    final_N = max(1, base_N * variation_factor)
+    
+    return np.round(final_N)
 
 def get_initial_population(PSD):
     """
@@ -703,85 +795,136 @@ def get_surface_area(population_df):
     """
 
     surface_area = pd.DataFrame({
-                'Branching': [get_surface_area_from_population(j,population_df['Branching'][j])  for j in range(0,MaxBinId)],
-                'Foliose': [get_surface_area_from_population(j,population_df['Foliose'][j])  for j in range(0,MaxBinId)],
-                'Other': [get_surface_area_from_population(j,population_df['Other'][j])  for j in range(0,MaxBinId)],
-                })
+        'Branching': [get_surface_area_from_population(j, population_df['Branching'][j]) for j in range(0, MaxBinId)],
+        'Foliose': [get_surface_area_from_population(j, population_df['Foliose'][j]) for j in range(0, MaxBinId)],
+        'Other': [get_surface_area_from_population(j, population_df['Other'][j]) for j in range(0, MaxBinId)],
+    })
 
     return surface_area
 
 
-       
 def initialize_coral():
-   """
-   Initialize the coral ecosystem at year = 0.
-   Returns
-   -------
-   None.
-   """
-   # Ensure attributes exist with defaults
-   if not hasattr(opts, "bleaching"):
-       opts.bleaching = True
-   if not hasattr(opts, "cyclone"):
-       opts.cyclone = True
-   
-   opts.year = 0
-   
-   # --- Bleaching handling ---
-   if opts.bleaching:
-       opts.dhw_lst = create_dhw_list(dhw_years)
-       opts.current_dhw = opts.dhw_lst[opts.year]
-       opts.dhw_counter = 0
-   else:
-       opts.dhw_lst = None
-       opts.current_dhw = 0
-       opts.dhw_counter = 0
-   
-   # --- Cyclone handling ---
-   if opts.cyclone:
-       opts.cyc_lst = create_cyclone_list(cyclone_years)
-       opts.current_cyc = opts.cyc_lst[opts.year]
-   else:
-       opts.cyc_lst = None
-       opts.current_cyc = [0, 0]
-   
-   opts.current_coral_cover = initial_coral_cover.copy()
-   opts.brooder_cover = initial_brooder_cover
-   opts.spawner_cover = initial_spawner_cover
-   opts.current_total_coral_cover = initial_total_coral_cover
-   opts.yearly_total_coral_cover_df = pd.DataFrame({'Year':0, 
-                                               'Branching_Area (%)':initial_coral_cover['Branching'], 
-                                               'Foliose_Area (%)':initial_coral_cover['Foliose'], 
-                                               'Other_Area (%)':initial_coral_cover['Other'], 
-                                               'total_coral_cover (%)':initial_total_coral_cover}, index=[0])
-   
-   opts.current_benthic_cover = opts.initial_benthic_cover_dict.copy()
-   opts.yearly_benthic_cover_df = pd.DataFrame({'Year':opts.year, 
-                                         'total_benthic_cover (%)':opts.current_benthic_cover['total'], 
-                                         'available_substrate (%)':opts.current_benthic_cover['available_substrate'], 
-                                         'hard_substrate (%)':opts.current_benthic_cover['hard_substrate'], 
-                                         'dead_coral (%)':opts.current_benthic_cover['dead_coral'], 
-                                         'CCA (%)':opts.current_benthic_cover['CCA'], 
-                                         'turfing_algae (%)':opts.current_benthic_cover['turfing_algae'], 
-                                         'macro_algae (%)':opts.current_benthic_cover['macro_algae'], 
-                                         'rubble (%)':opts.current_benthic_cover['rubble'], 
-                                         'sediment (%)':opts.current_benthic_cover['sediment'], 
-                                         'total_cc ':opts.current_total_coral_cover,
-                                         'unavailable_sub':opts.unavailable_substrate_percentage,
-                                         'tot':opts.available_substrate_percentage + opts.unavailable_substrate_percentage + opts.current_total_coral_cover, 
-                                        }, index=[0])
-   
-   opts.current_population_df = get_initial_population(PSD_T0)
-   opts.yearly_population_df_list = [opts.current_population_df]
-   opts.current_surface_area_m2_df = get_surface_area(opts.current_population_df)
-   opts.yearly_surface_area_df_list = [opts.current_surface_area_m2_df]
-   opts.unavailable_substrate_percentage = opts.current_benthic_cover['macro_algae'] + opts.current_benthic_cover['rubble'] + opts.current_benthic_cover['sediment']
-   opts.available_substrate_percentage = get_available_substrate()
-   opts.maximum_achievable_substrate_percentage = 100 - opts.unavailable_substrate_percentage
-   opts.upper_diameter = MaxBinId * binSize
-        
+    """
+    Initialize the coral ecosystem at year = 0.
+    """
+    # Ensure attributes exist with defaults
+    if not hasattr(opts, "bleaching"):
+        opts.bleaching = True
+    if not hasattr(opts, "cyclone"):
+        opts.cyclone = True
+
+    opts.year = 0
+###
+
+    # --- Randomized defaults moved here so they are reset each model run ---
+    # eggs spawning rates for branching/foliose and other (was in CoralOptions)
+    if getattr(opts, 'eggs_spawning_rate', None) is None:
+        opts.eggs_spawning_rate = [
+            random.uniform(0.63, 0.82),
+            random.uniform(0.55, 0.67)]
+    # eggs fertilisation rate (was in CoralOptions)
+    if getattr(opts, 'eggs_fertilisation_rate', None) is None:
+        opts.eggs_fertilisation_rate = random.uniform(0.41, 0.69)
+
+    # growth slope: generate a run-specific slope here (keeps per-run behaviour consistent)
+    if getattr(opts, 'gr_slope', None) is None:
+        opts.gr_slope = np.random.uniform(0.005, 0.045)
+
+    # compute per-bin decline based on the chosen gr_slope
+    if linear_decay_growth_rate:
+        opts.rate_of_decline = np.array([1 if i == 0 else 1 - (i - 1) * opts.gr_slope for i in range(MaxBinId)])
+    else:
+        opts.rate_of_decline = np.array([np.exp(-opts.gr_slope * binId) for binId in range(MaxBinId)])
+    # --- end randomized defaults ---
+###
+    # --- DHW handling ---
+    if opts.bleaching:
+        opts.dhw_lst = create_dhw_list(dhw_years)
+        opts.current_dhw = opts.dhw_lst[opts.year]
+        opts.dhw_counter = 0
+    else:
+        opts.dhw_lst = None
+        opts.current_dhw = 0
+        opts.dhw_counter = 0
+
+    # --- Cyclone handling ---
+    if opts.cyclone:
+        opts.cyc_lst = create_cyclone_list(cyclone_years)
+        opts.current_cyc = opts.cyc_lst[opts.year]
+    else:
+        opts.cyc_lst = None
+        opts.current_cyc = [0, 0]
+
+    # --- Sediment handling ---
+    if opts.enable_sediment_exposure:
+        # Create lists for additional suspended and deposited sediment exposure per year
+        opts.add_suspended_sediment_lst = [0] * (MaxYear + 1)
+        opts.add_deposited_sediment_lst = [0] * (MaxYear + 1)
+        for year in range(MaxYear + 1):
+            # Each year is a relative year index (0-based)
+            suspended, deposited = add_sedi_exp_per_year.get(year, (0, 0))
+            opts.add_suspended_sediment_lst[year] = suspended
+            opts.add_deposited_sediment_lst[year] = deposited
+        opts.current_add_suspended_sediment = opts.add_suspended_sediment_lst[opts.year]
+        opts.current_add_deposited_sediment = opts.add_deposited_sediment_lst[opts.year]
+    else:
+        opts.add_suspended_sediment_lst = None
+        opts.add_deposited_sediment_lst = None
+        opts.current_add_suspended_sediment = 0
+        opts.current_add_deposited_sediment = 0
+
+# deep copy initial values to prevent reference sharing between iterations
+
+    opts.current_coral_cover = initial_coral_cover.copy()
+    opts.brooder_cover = initial_brooder_cover
+    opts.spawner_cover = initial_spawner_cover.copy()  # Make sure this is a list copy
+    opts.current_total_coral_cover = initial_total_coral_cover
+    
+    # reset all tracking lists
+    # These lists accumulate data across years and must be reset for each iteration
+    opts.yearly_total_coral_cover_df = pd.DataFrame({'Year':0, 
+                   
+        'Branching_Area (%)': initial_coral_cover['Branching'],
+        'Foliose_Area (%)': initial_coral_cover['Foliose'],
+        'Other_Area (%)': initial_coral_cover['Other'],
+        'total_coral_cover (%)': initial_total_coral_cover}, index=[0])
+
+    opts.current_benthic_cover = opts.initial_benthic_cover_dict.copy()
+
+    # reset all tracking lists
+    # These lists accumulate data across years and must be reset for each iteration
 
 
+    opts.yearly_benthic_cover_df = pd.DataFrame({'Year': opts.year,
+        'total_benthic_cover (%)': opts.current_benthic_cover['total'],
+        'available_substrate (%)': opts.current_benthic_cover['available_substrate'],
+        'hard_substrate (%)': opts.current_benthic_cover['hard_substrate'],
+        'dead_coral (%)': opts.current_benthic_cover['dead_coral'],
+        'CCA (%)': opts.current_benthic_cover['CCA'],
+        'turfing_algae (%)': opts.current_benthic_cover['turfing_algae'],
+        'macro_algae (%)': opts.current_benthic_cover['macro_algae'],
+        'rubble (%)': opts.current_benthic_cover['rubble'],
+        'sediment (%)': opts.current_benthic_cover['sediment'],
+        'total_cc ': opts.current_total_coral_cover,
+        'unavailable_sub': opts.unavailable_substrate_percentage,
+        'tot': opts.available_substrate_percentage + opts.unavailable_substrate_percentage + opts.current_total_coral_cover,
+    }, index=[0])
+
+    opts.current_population_df = get_initial_population(PSD_T0)
+    
+    # Reset the yearly tracking lists 
+    opts.yearly_population_df_list = [opts.current_population_df.copy()]  # Fresh list with only year 0
+    
+    opts.current_surface_area_m2_df = get_surface_area(opts.current_population_df)
+    opts.yearly_surface_area_df_list = [opts.current_surface_area_m2_df.copy()]  # Fresh list with only year 0
+    
+    opts.unavailable_substrate_percentage = opts.current_benthic_cover['macro_algae'] + opts.current_benthic_cover['rubble'] + opts.current_benthic_cover['sediment']
+    opts.available_substrate_percentage = get_available_substrate()
+    opts.maximum_achievable_substrate_percentage = 100 - opts.unavailable_substrate_percentage
+    opts.upper_diameter = MaxBinId * binSize
+
+
+#
 def update_coral_parameters():
     """
     Update the current coral parameters based on the current surface area and population.
@@ -816,12 +959,20 @@ def update_coral_parameters():
     old_other_coral_cover = opts.yearly_total_coral_cover_df.iloc[opts.year-1]['Other_Area (%)']
     new_other_coral_cover = opts.yearly_total_coral_cover_df.iloc[opts.year]['Other_Area (%)']
     change_other_cover = new_other_coral_cover - old_other_coral_cover
+
+    ##RIO: impacts of diturbance to benthic cover is not cummulative. 
+    ###The code applies only one disturbance impact per year, with the following priority:
+#Cyclone > Bleaching > Sediment > Normal change.
+#This ensures that if multiple disturbances could occur in the same year, only the highest-priority event is processed, and its effects are reflected in the benthic cover update.
     
     if opts.current_cyc[0] != 0:     
         calculate_benthos_after_cyclone(change_branching_cover, change_foliose_cover, change_other_cover)
         
     elif opts.current_dhw != 0:
         calculate_benthos_after_bleaching(change_branching_cover, change_foliose_cover, change_other_cover)
+    #below is currently redundent as reduction in coral cover converts to dead coral anyway
+    elif opts.current_add_deposited_sediment > 0:
+        calculate_benthos_after_pcm_ds(change_branching_cover, change_foliose_cover, change_other_cover)
     
     else:
         if change_branching_cover > 0:
@@ -892,7 +1043,6 @@ def update_coral_parameters():
                                          }, index=[0])
     opts.yearly_benthic_cover_df = pd.concat([opts.yearly_benthic_cover_df[:],current_bentic_cover]).reset_index(drop = True)
     
-    
 
     
     
@@ -935,10 +1085,11 @@ def count_new_population_per_bin(binId,population,growth_rate,pcm_rate,wcm_rate,
         return 0, 0, 0, 0
     
     else:
-        
+    #RIO: might have to apply current growth rate here
         arr = np.array(np.linspace(lower_diameter,upper_diameter,100))
         arr += growth_rate * (1 - (current_total_coral_cover / opts.maximum_achievable_substrate_percentage)**opts.growth_parameter)
-        arr *= np.sqrt(1-pcm_rate)
+        #arr *= np.sqrt(1-pcm_rate) #pcm was negative so couldnt find sqt root #Make sure all values in PCM_rates and any adjusted PCM rates (e.g., after sediment or DHW) are between 0 and 1.
+        arr *= np.sqrt(np.clip(1-pcm_rate, 0, None)) # ensure non-negative values for very high pcm_rate
         # arr *= np.sqrt(1-wcm_rate)
         
         if binId == MaxBinId-1:
@@ -1030,7 +1181,6 @@ def calculate_population_change(oldPop,growth_rate,pcm_rate,wcm_rate,available_s
             newPoplist[i] += rmn
             newPoplist[i+1] += grw
             newPoplist[i+2] += grw_grw
-
     # Ensure no negative populations (biologically impossible)
     newPoplist = np.maximum(newPoplist, 0)
         
@@ -1053,10 +1203,28 @@ def run_yearly_change(PSD_df, Years):
     -------
     pandas.DataFrame
         A dataframe containing yearly total coral cover data.
-    """    
-    #generate a random growth slope for growth rate
-    opts.gr_slope = random.uniform(0.01, 0.04)
+    """
     
+    # Generate random growth slope for each run, with proper seeding
+    # Use numpy random instead of Python's random for better control
+    opts.gr_slope = np.random.uniform(0.01, 0.04) #comutes growth slope for each run 
+###ADDED THIS TO ALLOW: growth rate to be upated based on growth slope per run
+###
+        # Recompute per-bin decline and rebuild growth_rate so the new slope takes effect
+    if linear_decay_growth_rate:
+        _rate_of_decline = np.array([1 if i == 0 else 1 - (i - 1) * opts.gr_slope for i in range(MaxBinId)])
+    else:
+        _rate_of_decline = np.array([np.exp(-opts.gr_slope * binId) for binId in range(MaxBinId)])
+
+    # Rebuild the per-morphology growth_rate DataFrame used later in the year loop
+    growth_rate = pd.DataFrame({
+        'Branching': growth_rate_branching * _rate_of_decline,
+        'Foliose':   growth_rate_foliose   * _rate_of_decline,
+        'Other':     growth_rate_other     * _rate_of_decline,
+    })
+###
+
+
     opts.dhw_counter = 0
         
     # Run simulation for given number of years
@@ -1079,13 +1247,126 @@ def run_yearly_change(PSD_df, Years):
             opts.current_cyc = opts.cyc_lst[opts.year]
         else:
             opts.current_cyc = [0, 0]
+
         
+        ###Rio 
+        #removing below to Replace the sediment-handling block inside run_yearly_change so current_growth_rate is computed and then used in calculate_population_change calls
+        
+        # Handle sediment exposure only if enabled
+        # if getattr(opts, "enable_sediment_exposure", True) and opts.add_deposited_sediment_lst is not None:
+        # 	opts.current_add_deposited_sediment = opts.add_deposited_sediment_lst[opts.year]
+        # 	###RIO adjust below if you want to add resilince with exposure 
+        # 	# count the number of bleaching that took place
+        # 	#if opts.current_add_deposited_sediment != 0:
+        # 		# every time bleaching happens the coral becomes resilient to bleaching
+        # 		# hence update the coefficient
+        # 	#	opts.dhw_counter += 1
+        # else:
+        # 	opts.current_add_deposited_sediment = 0
+
+        # 	#rio gr
+        # 	GR_ss = get_GR_after_ss(opts.current_add_suspended_sediment, gr_sedi_sus_coeff)
+
+        # if getattr(opts, "enable_sediment_exposure", True) and getattr(opts, "add_deposited_sediment_lst", None) is not None:
+        #     opts.current_add_deposited_sediment = opts.add_deposited_sediment_lst[opts.year]
+        #     opts.current_add_suspended_sediment = opts.add_suspended_sediment_lst[opts.year]
+        # else:
+        #     opts.current_add_deposited_sediment = 0
+        #     opts.current_add_suspended_sediment = 0
+
+        # # --- NEW: apply RAW-months-based deposited-sediment -> AS adjustment ---
+        # # adjust_AS_based_on_DS reads raw monthly values from global `sedi_years` and will raise an error
+        # # if sedi_years or required parameters/keys are missing (no silent fallbacks).
+        # if getattr(opts, "enable_sediment_exposure", False):
+        #     ds_diag = adjust_AS_based_on_DS(opts, opts.year)
+        #     # ds_diag contains {'mean_monthly_ds','loss_pct','recovered_pct'} - record if desired
+        if getattr(opts, "enable_sediment_exposure", True) and getattr(opts, "add_deposited_sediment_lst", None) is not None:
+            opts.current_add_deposited_sediment = opts.add_deposited_sediment_lst[opts.year]
+            opts.current_add_suspended_sediment = opts.add_suspended_sediment_lst[opts.year]
+        else:
+            opts.current_add_deposited_sediment = 0
+            opts.current_add_suspended_sediment = 0
+
+        # compute growth rates for this year (use suspended-sediment adjusted growth if enabled)
+        if getattr(opts, "enable_sediment_exposure", True):
+            # get_GR_after_ss returns a DataFrame with the same columns as global `growth_rate`
+            current_growth_rate = get_GR_after_ss(growth_rate, add_sedi_exp_per_year, opts.year, sedi_exp_growth_coeff)
+        else:
+            current_growth_rate = growth_rate
+        # end of removing above
+
         PCM_rates_dhw = get_PCM_rates_after_dhw(PCM_rates, opts.current_dhw, branching_bleaching_rate, foliose_bleaching_rate, other_bleaching_rate)
+        #PCM_rates_ds = get_PCM_rates_after_DS_exp(PCM_rates, opts.current_add_deposited_sediment, sedi_exp_PCM_coeff)
+        PCM_rates_ds = get_PCM_rates_after_DS_exp(
+            PCM_rates,
+            add_sedi_exp_per_year,   # dictionary from config.py
+            opts.year,               # current year index
+            sedi_exp_PCM_coeff      # coefficients from config.py
+        )
+
+
+
         WCM_rate_cyc = get_WCM_rates_after_cyclones(WCM_rates, opts.current_cyc[0], opts.current_cyc[1])
+
+#tried to include both decline from ds and from dhw.. didnt work 
+#		new_branching_pop = calculate_population_change(opts.current_population_df['Branching'], growth_rate['Branching'],PCM_rates_dhw['Branching'],PCM_rates_ds['Branching'],WCM_rate_cyc['Branching'],opts.current_total_coral_cover,'Branching')
+#		new_foliose_pop = calculate_population_change(opts.current_population_df['Foliose'], growth_rate['Foliose'],PCM_rates_dhw['Foliose'],PCM_rates_ds['Foliose'],WCM_rate_cyc['Foliose'],opts.current_total_coral_cover,'Foliose')
+#		new_other_pop = calculate_population_change(opts.current_population_df['Other'], growth_rate['Other'],PCM_rates_dhw['Other'],PCM_rates_ds['Other'],WCM_rate_cyc['Other'],opts.current_total_coral_cover,'Other')
+#for this version of the model I will include only the impact of ds
         
-        new_branching_pop = calculate_population_change(opts.current_population_df['Branching'], growth_rate['Branching'],PCM_rates_dhw['Branching'],WCM_rate_cyc['Branching'],opts.current_total_coral_cover,'Branching')
-        new_foliose_pop = calculate_population_change(opts.current_population_df['Foliose'], growth_rate['Foliose'],PCM_rates_dhw['Foliose'],WCM_rate_cyc['Foliose'],opts.current_total_coral_cover,'Foliose')
-        new_other_pop = calculate_population_change(opts.current_population_df['Other'], growth_rate['Other'],PCM_rates_dhw['Other'],WCM_rate_cyc['Other'],opts.current_total_coral_cover,'Other')
+
+        #commented out code block below to incorp current gr into current total coral cover calc 
+        # new_branching_pop = calculate_population_change(
+        # 	opts.current_population_df['Branching'],
+        # 	growth_rate['Branching'],
+        # 	PCM_rates_ds['Branching'],
+           #  	WCM_rate_cyc['Branching'],
+        # 	opts.current_total_coral_cover,
+        # 	'Branching'
+        # )
+        # new_foliose_pop = calculate_population_change(
+        # 	opts.current_population_df['Foliose'],
+        # 	growth_rate['Foliose'],
+        # 	PCM_rates_ds['Foliose'],
+        # 	WCM_rate_cyc['Foliose'],
+        # 	opts.current_total_coral_cover,
+        # 	'Foliose'
+        # )
+        # new_other_pop = calculate_population_change(
+        # 	opts.current_population_df['Other'],
+        # 	growth_rate['Other'],
+        # 	PCM_rates_ds['Other'],
+        # 	WCM_rate_cyc['Other'],
+        # 	opts.current_total_coral_cover,
+        # 	'Other'
+        # )
+        new_branching_pop = calculate_population_change(
+            opts.current_population_df['Branching'],
+            current_growth_rate['Branching'],
+            PCM_rates_ds['Branching'],
+                WCM_rate_cyc['Branching'],
+            opts.current_total_coral_cover,
+            'Branching'
+        )
+        new_foliose_pop = calculate_population_change(
+            opts.current_population_df['Foliose'],
+            current_growth_rate['Foliose'],
+            PCM_rates_ds['Foliose'],
+            WCM_rate_cyc['Foliose'],
+            opts.current_total_coral_cover,
+            'Foliose'
+        )
+        new_other_pop = calculate_population_change(
+            opts.current_population_df['Other'],
+            current_growth_rate['Other'],
+            PCM_rates_ds['Other'],
+            WCM_rate_cyc['Other'],
+            opts.current_total_coral_cover,
+            'Other'
+        )
+
+
+
         opts.current_population_df = pd.DataFrame({ 'Branching': np.array([pop for pop in new_branching_pop]), 
                                                     'Foliose': np.array([pop for pop in new_foliose_pop]), 
                                                     'Other': np.array([pop for pop in new_other_pop])})
@@ -1104,6 +1385,49 @@ def run_yearly_change(PSD_df, Years):
         opts.yearly_population_df_list.append(opts.current_population_df)
         update_coral_parameters()
         
+
+
+
+        # --- NEW: apply adjust_AS_based_on_DS AFTER update_coral_parameters() so
+        # calculate_benthos_after_pcm_ds (called inside update_coral_parameters) runs first.
+        if getattr(opts, "enable_sediment_exposure", False):
+            ds_diag = adjust_AS_based_on_DS(opts, opts.year)
+
+            # Build diagnostics & updated benthic row (match existing yearly_benthic_cover_df columns)
+            new_benthic_row = {
+                'Year': opts.year,
+                'total_benthic_cover (%)': opts.current_benthic_cover.get('total', np.nan),
+                'available_substrate (%)': opts.available_substrate_percentage,
+                'hard_substrate (%)': opts.current_benthic_cover.get('hard_substrate', np.nan),
+                'dead_coral (%)': opts.current_benthic_cover.get('dead_coral', np.nan),
+                'CCA (%)': opts.current_benthic_cover.get('CCA', np.nan),
+                'turfing_algae (%)': opts.current_benthic_cover.get('turfing_algae', np.nan),
+                'macro_algae (%)': opts.current_benthic_cover.get('macro_algae', np.nan),
+                'rubble (%)': opts.current_benthic_cover.get('rubble', np.nan),
+                'sediment (%)': opts.current_benthic_cover.get('sediment', np.nan),
+                'total_cc ': opts.current_total_coral_cover,
+                'unavailable_sub': opts.unavailable_substrate_percentage,
+                'tot': opts.available_substrate_percentage + opts.unavailable_substrate_percentage + opts.current_total_coral_cover,
+                # sediment diagnostics
+                'ds_mean_monthly_ds': ds_diag.get('mean_monthly_ds'),
+               'ds_loss_pct': ds_diag.get('loss_pct'),
+                'ds_recovered_pct': ds_diag.get('recovered_pct'),
+            }
+
+            # Ensure columns exist
+            for col in new_benthic_row.keys():
+                if col not in opts.yearly_benthic_cover_df.columns:
+                    opts.yearly_benthic_cover_df[col] = float('nan')
+
+            # Overwrite the last appended benthic row (update_coral_parameters already appended it)
+            last_idx = len(opts.yearly_benthic_cover_df) - 1
+            for col, val in new_benthic_row.items():
+                opts.yearly_benthic_cover_df.at[last_idx, col] = val
+
+
+
+
+
     # Return dataframe containing yearly total coral cover data    
     return opts.yearly_total_coral_cover_df
 
@@ -1171,6 +1495,13 @@ def run_multiple_model_iterations_total_cover(number_of_iteration, workbook_path
 
     with pd.ExcelWriter(workbook_path, engine=engine) as writer:
         for i in range(1, number_of_iteration + 1):
+            # set unique seeds for each iteration to ensure different random outcomes
+            # Use both numpy and standard random to cover all random number usage
+            np.random.seed(42 + i)  # Different seed for each iteration
+            random.seed(42 + i)     # Different seed for each iteration
+            # fix spawn month for this run/iteration
+            set_current_run_id(i)
+
             yearly_total_coral_cover = run_coral_model(PSD_T0, MaxYear)['total_coral_cover (%)']
             iteration_series.append(pd.Series(yearly_total_coral_cover.values, name=f'iteration_{i}'))
 
@@ -1215,7 +1546,7 @@ def plot_growth_rate_iterations(total_cover_df):
     plt.rcParams['xtick.labelsize'] = label_size
     plt.rcParams['ytick.labelsize'] = label_size
 
-    # 1) Build x as actual years
+    # 1) Build x as ACTUAL years
     yrs = total_cover_df['year'].to_numpy()
     # If 'year' already holds real years, this keeps them; if it's indices, add year_start
     x = (yrs + year_start) if yrs.min() < 1000 else yrs
@@ -1243,7 +1574,6 @@ def plot_growth_rate_iterations(total_cover_df):
     plt.savefig(plot_file, format='svg')
     plt.show()    
 
-
 # Function to run the model multiple iterations and collect the results 
 def run_model_iterations_all_parameters(number_of_iterations):
     population_results = []
@@ -1251,7 +1581,12 @@ def run_model_iterations_all_parameters(number_of_iterations):
     area_results = []
     final_results = []
     
-    for _ in range(100):
+    for iteration in range(number_of_iterations):
+        np.random.seed(42 + iteration)
+        random.seed(42 + iteration)
+        # fix spawn month for this run/iteration
+        set_current_run_id(iteration)
+
         coral_model_results = run_coral_model(PSD_T0, MaxYear)
         benthic_cover_results = opts.yearly_benthic_cover_df
         rugosity_results = get_rugosity_list()
@@ -1286,6 +1621,7 @@ def run_model_iterations_all_parameters(number_of_iterations):
     final_df = pd.concat(final_results)
     
     return final_df, population_results, percentage_population_results, area_results
+
 
 def get_relative_increase_coral_cover(old_coral_cover, new_coral_cover):
     """
@@ -1522,7 +1858,7 @@ def plot_rugosity_total_coral_cover():
     plt.show()
     
     
-
+############# I thought maybe i need to move this to config but then it doesnt run 
 def create_dhw_list(dhw_years):
     """
     Create a list of degree heating week values given a dictionary of year-temperature pairs.
@@ -1586,7 +1922,32 @@ def create_cyclone_list(cyc_years):
             
     return cyc_lst
 
+###Rio create  ds list 
+def create_deposited_sediment_list(add_sedi_exp_per_year):
+    """
+    Create a list of additional deposited sediment values per year.
 
+    Parameters
+    ----------
+    add_sedi_exp_per_year : dict
+        A dictionary with keys as relative year indices and values as (suspended, deposited) tuples.
+
+    Returns
+    -------
+    list
+        A list where each index corresponds to a year and contains the additional deposited sediment value.
+        If no data is available for a particular year, the entry is set to 0.
+
+    Notes
+    -----
+    The list is created by initializing an array of zeros with a length equal to MaxYear+1.
+    The deposited sediment values for each year are then inserted at the corresponding index in the list.
+    """
+    deposited_lst = [0] * (MaxYear + 1)
+    for year, (suspended, deposited) in add_sedi_exp_per_year.items():
+        deposited_lst[int(year)] = deposited  # set the deposited sediment at the corresponding year index
+
+    return deposited_lst
 
 def eggs_decline_rate(dhw):
     """
@@ -1663,6 +2024,127 @@ def get_PCM_rates_after_dhw(PCM_rates, dhw, branching_bleaching_rate, foliose_bl
                                     )
     return pcm_rates_dhw
 
+###Rio - add if sediment exposure is enabled run these functions
+def get_PCM_rates_after_DS_exp(PCM_rates, add_sedi_exp_per_year, year, sedi_exp_PCM_coeff):
+    """
+    Calculate updated Partial Colony Mortality (PCM) rates for each coral type based on deposited sediment exposure.
+    Ensures PCM rates are clipped between 0 and 1.
+
+    This version uses a linear relationship:
+        new_rate = base_rate + (coefficient x additional deposited_sediment)
+
+    Parameters:
+    - PCM_rates: pd.DataFrame with columns ['Branching', 'Foliose', 'Other'] representing base PCM rates.
+    - add_sedi_exp_per_year: dict with keys as relative year indices and values as (suspended, deposited) tuples.
+    - year: int, relative year index (e.g., 0 for 2005).
+    - sedi_exp_PCM_coeff: dict with linear coefficients for each coral type.
+
+    Returns:
+    - updated_PCM_rates: pd.DataFrame with adjusted PCM rates.
+    """
+    import pandas as pd
+
+    pcm_rates_ds = pd.DataFrame(columns=PCM_rates.columns)
+    add_deposited_sediment = add_sedi_exp_per_year.get(year, (0, 0))[1]
+    susc = float(globals().get('sediment_susceptibilityPCM'))
+
+    for coral_type in PCM_rates.columns:
+        # #pcm coeff positive 
+        coeff = sedi_exp_PCM_coeff.get(coral_type, 0) # get coefficient for coral type
+        adjusted_rates = []
+        for base_rate in PCM_rates[coral_type]:
+        #     raw=max(0, min (1,coeff * add_deposited_sediment))
+        #     factor=max(0, min (1, raw* sediment_susceptibilityPCM))
+        #     adjusted_rate = max(0, min( 1,base_rate +(base_rate* factor)))# clamp between 0 and 1
+        #     adjusted_rates.append(adjusted_rate)
+        # pcm_rates_ds[coral_type] = adjusted_rates
+                    # linear effect (coeff * additional sediment), clamp to [0,1]
+            raw = coeff * add_deposited_sediment
+            raw = float(np.clip(raw, 0.0, 1.0))
+
+        # effective impact after susceptibility
+            effective = raw * susc
+
+        # absolute additive change (PCM is an absolute probability increment)
+            adjusted_rate = base_rate + effective ### this one 
+            #OR
+            #adjusted_rate= base_rate + (base_rate * effective)
+
+        # another option: proportional change (use to scale base_rate)
+        #    adjusted_rate = base_rate * (1.0 + effective)#? - effective 
+        #    adjusted_rate = base_rate * (1.0 - effective)
+        # final clamp to valid probability range [0,1]
+            adjusted_rate = float(np.clip(adjusted_rate, 0.0, 1.0))
+
+            adjusted_rates.append(adjusted_rate)
+        pcm_rates_ds[coral_type] = adjusted_rates
+
+    return pcm_rates_ds
+
+# def get_GR_after_ss(current_add_suspended_sediment, gr_sedi_sus_coeff):
+# 	"""
+# 	Calculate the growth rate after considering the effect of suspended sediment.
+# 	Parameters:
+# 	-----------
+# 	current_add_suspended_sediment : float
+# 		The current amount of added suspended sediment.
+# 	gr_sedi_sus_coeff : dict
+# 		A dictionary containing the growth rate coefficients for each coral type.
+# 	Returns:
+# 	--------
+# 	growth_rate_ss : dict
+# 		A dictionary containing the updated growth rates for each coral type after considering the effect of suspended sediment.
+# 	Notes:
+# 	------
+# 	This function calculates the growth rate for each coral type (Branching, Foliose, Other) after considering the effect of suspended sediment.
+# 	The growth rate is adjusted based on the amount of suspended sediment and the corresponding growth rate coefficient for each coral type.
+# 	The calculations are performed using an exponential decay function.
+# 	"""
+
+# 	if not enable_sediment_exposure:
+# 		return growth_rate
+
+# 	else:
+# 		growth_rate_ss = {i: growth_rate[i] * np.exp(-gr_sedi_sus_coeff[i] * current_add_suspended_sediment) for i in coral_type}
+# 		return growth_rate_ss
+def get_GR_after_ss(growth_rate, add_sedi_exp_per_year, year, sedi_exp_growth_coeff):
+    """
+    Calculate the growth rate after considering the effect of suspended sediment for each coral type and bin,
+    returning a DataFrame similar to get_PCM_rates_after_DS_exp.
+
+    Parameters:
+    -----------
+    growth_rate : pd.DataFrame
+        The base growth rates for each coral type and bin.
+    add_sedi_exp_per_year : dict
+        Dictionary with keys as year indices and values as (suspended, deposited) tuples.
+    year : int
+        The current year index.
+    sedi_exp_growth_coeff : dict
+        Growth rate coefficients for each coral type.
+
+    Returns:
+    --------
+    growth_rate_ss : pd.DataFrame
+        DataFrame with updated growth rates for each coral type and bin after considering suspended sediment.
+    """
+    import pandas as pd
+
+    growth_rate_ss = pd.DataFrame(columns=growth_rate.columns)
+    add_suspended_sediment = add_sedi_exp_per_year.get(year, (0, 0))[0]
+
+    for coral in growth_rate.columns:
+        coeff = sedi_exp_growth_coeff.get(coral, 0)
+        adjusted_rates = []
+        for base_rate in growth_rate[coral]:
+            # compute raw multiplicative factor then clamp to [0.0, 1.0]
+            raw = max(-1, min(0,coeff * add_suspended_sediment))
+            effective =  max(-1, min(0,raw * sediment_susceptibilityGR))
+            factor = max(0.0, min(1.0, 1+ effective))
+            adjusted_rate = max(0.0, base_rate * factor) # clamp adjusted_rate to be >= 0.0 (prevent negative growth)
+            adjusted_rates.append(adjusted_rate)
+        growth_rate_ss[coral] = adjusted_rates
+    return growth_rate_ss
 
 
 def get_WCM_rates_after_cyclones(WCM_rates, cyclone_severity_level, distance_to_cyclone):
@@ -1695,7 +2177,10 @@ def get_WCM_rates_after_cyclones(WCM_rates, cyclone_severity_level, distance_to_
     
     else:
         cyclone_severity_level = cyclone_severity_level*2
-        pp = np.linspace(1,MaxBinId+1,20)
+
+
+        # Fix: Create arrays that match MaxBinId exactly
+        pp = np.linspace(1, MaxBinId+1, MaxBinId)  # Ensures length = MaxBinId
         bins = np.array([p*cyclone_bin_coefficient for p in pp])
         
         exp_term_branching = cyclone_severity_level*np.exp(-distance_to_cyclone/bins/cyclone_bin_coefficient)
@@ -1703,17 +2188,22 @@ def get_WCM_rates_after_cyclones(WCM_rates, cyclone_severity_level, distance_to_
         exp_term_other = cyclone_severity_level*np.exp(-distance_to_cyclone/bins/cyclone_bin_coefficient)
 
 
-        wcm_rates_cyc = pd.DataFrame(
-                                        {
-                                            'Branching': [1 - 1 / (1 + branching_cyclone_coefficient * exp_term_branching[j]) + WCM_rates['Branching'][j] for j in range(MaxBinId)],
-                                            'Foliose': [1 - 1 / (1 + foliose_cyclone_coefficient * exp_term_foliose[j]) + WCM_rates['Foliose'][j] for j in range(MaxBinId)],
-                                            'Other': [1 - 1 / (1 + other_cyclone_coefficient * exp_term_other[j]) + WCM_rates['Other'][j] for j in range(MaxBinId)],
-                                        }
-                                        )
+        # wcm_rates_cyc = pd.DataFrame(
+        # 								{
+        # 									'Branching': [1 - 1 / (1 + branching_cyclone_coefficient * exp_term_branching[j]) + WCM_rates['Branching'][j] for j in range(MaxBinId)],
+        # 									'Foliose': [1 - 1 / (1 + foliose_cyclone_coefficient * exp_term_foliose[j]) + WCM_rates['Foliose'][j] for j in range(MaxBinId)],
+        # 									'Other': [1 - 1 / (1 + other_cyclone_coefficient * exp_term_other[j]) + WCM_rates['Other'][j] for j in range(MaxBinId)],
+        # 								}
+        # 								)
+        wcm_rates_cyc = pd.DataFrame({
+            'Branching': [1 - 1 / (1 + branching_cyclone_coefficient * exp_term_branching[j]) + WCM_rates['Branching'][j] for j in range(MaxBinId)],
+            'Foliose': [1 - 1 / (1 + foliose_cyclone_coefficient * exp_term_foliose[j]) + WCM_rates['Foliose'][j] for j in range(MaxBinId)],
+            'Other': [1 - 1 / (1 + other_cyclone_coefficient * exp_term_other[j]) + WCM_rates['Other'][j] for j in range(MaxBinId)],
+        })
         
         return wcm_rates_cyc
 
-
+###########################################
 
 def split_w(x, y, z, t, w):
     """
@@ -1796,7 +2286,128 @@ def get_unavailable_substrate():
     
     return opts.current_benthic_cover['macro_algae'] + opts.current_benthic_cover['rubble'] + opts.current_benthic_cover['sediment']
 
+def adjust_AS_based_on_DS(opts, year):
+    """
+    Adjust available substrate using RAW monthly deposited sediment (no baseline subtraction).
+    Preconditions (no silent fallbacks) - will raise RuntimeError with a clear message if missing:
+      - opts.enable_sediment_exposure == True to run (otherwise returns skip-dict)
+      - global `sedi_years` present with keys (year, month) for months 1..12 and values [suspended, deposited]
+      - globals: ds_AS_threshold, ds_AS_conversion, ds_AS_conversion_limit
+      - opts.current_benthic_cover contains required keys:
+        ['hard_substrate','dead_coral','CCA','turfing_algae','sediment','macro_algae','rubble']
+    Logic:
+      - mean_monthly_ds = mean(deposited for months 1..12)  # mg/cm2/day (matches your input units)
+      - if mean_monthly_ds > ds_AS_threshold:
+          loss_pct = min(ds_AS_conversion * (mean_monthly_ds - ds_AS_threshold), ds_AS_conversion_limit)
+          remove loss_pct (ppt) from available components proportionally and add to 'sediment'
+      - else:
+          recover_pct = min(ds_AS_conversion * (ds_AS_threshold - mean_monthly_ds), ds_AS_conversion_limit, current sediment)
+          move recover_pct from 'sediment' -> hard_substrate & dead_coral (50:50)
+    Returns diagnostics dict: {'mean_monthly_ds','loss_pct','recovered_pct'}
+    """
+    # 1) run only when feature enabled
+    if not getattr(opts, "enable_sediment_exposure", False):
+        return {"mean_monthly_ds": None, "loss_pct": 0.0, "recovered_pct": 0.0}
 
+    # 2) required globals / objects (fail loudly if missing)
+    missing = []
+    if "sedi_years" not in globals():
+        missing.append("sedi_years (global raw monthly inputs)")
+    for name in ("ds_AS_threshold", "ds_AS_conversion", "ds_AS_conversion_limit"):
+        if name not in globals():
+            missing.append(name)
+    if not hasattr(opts, "current_benthic_cover"):
+        missing.append("opts.current_benthic_cover")
+    if missing:
+        print("ERROR: adjust_AS_based_on_DS missing required items:", ", ".join(missing))
+        raise RuntimeError("Missing required inputs for adjust_AS_based_on_DS. See message above.")
+
+    # 3) collect 12 raw monthly deposited values for the model year; fail if any missing / NaN
+    monthly = []
+    bad = []
+    for m in range(1, 13):
+        key = (int(year), int(m))
+        if key not in sedi_years:
+            bad.append(f"{key} (missing)")
+            continue
+        entry = sedi_years[key]
+        try:
+            dep = entry[1]
+        except Exception:
+            bad.append(f"{key} (bad format)")
+            continue
+        if pd.isna(dep):
+            bad.append(f"{key} (NaN)")
+        else:
+            monthly.append(float(dep))
+    if bad or len(monthly) != 12:
+        print("ERROR: adjust_AS_based_on_DS cannot compute mean_monthly_ds; issues with sedi_years:", "; ".join(bad))
+        raise RuntimeError("Incomplete or invalid monthly deposited-sediment data in sedi_years.")
+
+    # 4) compute the mean monthly deposited sediment (mg/cm2/day)
+    mean_monthly_ds = float(sum(monthly) / 12.0)
+
+    # 5) read user parameters (guaranteed present above)
+    threshold = float(globals()["ds_AS_threshold"])
+    conv_per_unit = float(globals()["ds_AS_conversion"])
+    conv_limit = float(globals()["ds_AS_conversion_limit"])
+
+    # 6) ensure benthic keys exist (no silent creation)
+    required_benthic_keys = ['hard_substrate','dead_coral','CCA','turfing_algae','sediment','macro_algae','rubble']
+    missing_keys = [k for k in required_benthic_keys if k not in opts.current_benthic_cover]
+    if missing_keys:
+        print("ERROR: adjust_AS_based_on_DS missing benthic cover keys:", ", ".join(missing_keys))
+        raise RuntimeError("Missing current_benthic_cover keys required for adjustment.")
+
+    bc = opts.current_benthic_cover  # operate in-place
+
+    loss_pct = 0.0
+    recovered_pct = 0.0
+
+    if mean_monthly_ds > threshold:
+        # LOSS: available -> sediment
+        excess = mean_monthly_ds - threshold
+        raw_loss = conv_per_unit * excess
+        loss_pct = min(raw_loss, conv_limit)
+
+        avail_keys = ['hard_substrate','dead_coral','CCA','turfing_algae']
+        sum_avail = sum(max(0.0, bc[k]) for k in avail_keys)
+        if sum_avail <= 0.0:
+            print(f"ERROR: adjust_AS_based_on_DS sum of available substrate is zero for year={year}; cannot remove {loss_pct} ppt.")
+            raise RuntimeError("No available substrate to remove; check current_benthic_cover values.")
+
+        # remove proportionally and add to sediment
+        for k in avail_keys:
+            share = max(0.0, bc[k])
+            reduction = (share / sum_avail) * loss_pct
+            bc[k] = max(0.0, bc[k] - reduction)
+        bc['sediment'] = min(100.0, bc['sediment'] + loss_pct)
+
+    else:
+        # RECOVERY: sediment -> hard_substrate + dead_coral (50:50)
+        deficit = threshold - mean_monthly_ds
+        raw_recover = conv_per_unit * deficit
+        recover_pct = min(raw_recover, conv_limit)
+        recover_pct = min(recover_pct, bc['sediment'])  # cannot recover more sediment than exists
+        recovered_pct = recover_pct
+
+        if recovered_pct > 0:
+            half = recovered_pct * 0.5
+            bc['sediment'] = max(0.0, bc['sediment'] - recovered_pct)
+            bc['hard_substrate'] = min(100.0, bc['hard_substrate'] + half)
+            bc['dead_coral'] = min(100.0, bc['dead_coral'] + half)
+
+    # 7) update derived percentages via existing helpers (these must exist)
+    try:
+        opts.available_substrate_percentage = get_available_substrate()
+        opts.unavailable_substrate_percentage = get_unavailable_substrate()
+        opts.maximum_achievable_substrate_percentage = 100.0 - opts.unavailable_substrate_percentage
+    except Exception as e:
+        print("ERROR: adjust_AS_based_on_DS failed updating derived percentages:", e)
+        raise
+
+    # 8) return diagnostics for logging
+    return {"mean_monthly_ds": mean_monthly_ds, "loss_pct": float(loss_pct), "recovered_pct": float(recovered_pct)}
 
 def calculate_benthos_after_cyclone(change_branching_cover, change_foliose_cover, change_other_cover):
     
@@ -1901,6 +2512,62 @@ def calculate_benthos_after_bleaching(change_branching_cover, change_foliose_cov
         opts.current_benthic_cover['dead_coral'] -= w_dc
         opts.current_benthic_cover['turfing_algae'] -= w_tf
 
+###R##RIO: below is implimented if deposited sediment event happens but cyclones and bleaching dont happen in that year
+#impacts of these events are not culumative 
+#can test out impact of converting to changes in coral cover to different proportions of dead coral and sediment
+## could do a sensitivity analysis later to see if converting all lost coral to dead coral (as it currently is) or to a proportion of sediment is better
+
+def calculate_benthos_after_pcm_ds(change_branching_cover, change_foliose_cover, change_other_cover):
+    """
+    This function adjusts the benthic cover values according to the changes caused by a depsoited sediment event. The 
+    changes in branching cover, foliose cover, and other cover are converted to dead coral and added to the dead coral cover.
+    
+    Parameters
+    ----------
+    change_branching_cover : float
+        The change in the branching cover due to the  event.
+    change_foliose_cover : float
+        The change in the foliose cover due to the  event.
+    change_other_cover : float
+        The change in the other cover types due to the  event.
+
+    Returns
+    -------
+    None
+
+    """
+    
+    if change_branching_cover < 0:
+        #opts.current_benthic_cover['dead_coral'] += abs(change_branching_cover)
+        opts.current_benthic_cover['sediment'] += abs(change_branching_cover)
+        
+    else:
+        w_hs, w_dc, w_tf = split_w(opts.current_benthic_cover['hard_substrate'], opts.current_benthic_cover['dead_coral'], opts.current_benthic_cover['turfing_algae'], opts.available_substrate_percentage, change_branching_cover)
+        opts.current_benthic_cover['hard_substrate'] -= w_hs
+        opts.current_benthic_cover['dead_coral'] -= w_dc
+        opts.current_benthic_cover['turfing_algae'] -= w_tf
+        
+    if change_foliose_cover < 0:
+        #opts.current_benthic_cover['dead_coral'] += abs(change_foliose_cover)
+        opts.current_benthic_cover['sediment'] += abs(change_foliose_cover)
+        
+    else:
+        w_hs, w_dc, w_tf = split_w(opts.current_benthic_cover['hard_substrate'], opts.current_benthic_cover['dead_coral'], opts.current_benthic_cover['turfing_algae'], opts.available_substrate_percentage, change_foliose_cover)
+        opts.current_benthic_cover['hard_substrate'] -= w_hs
+        opts.current_benthic_cover['dead_coral'] -= w_dc
+        opts.current_benthic_cover['turfing_algae'] -= w_tf
+        
+    if change_other_cover < 0:
+        #opts.current_benthic_cover['dead_coral'] += abs(change_other_cover)
+        opts.current_benthic_cover['sediment'] += abs(change_other_cover)
+        
+    else:
+        w_hs, w_dc, w_tf = split_w(opts.current_benthic_cover['hard_substrate'], opts.current_benthic_cover['dead_coral'], opts.current_benthic_cover['turfing_algae'], opts.available_substrate_percentage, change_other_cover)
+        opts.current_benthic_cover['hard_substrate'] -= w_hs
+        opts.current_benthic_cover['dead_coral'] -= w_dc
+        opts.current_benthic_cover['turfing_algae'] -= w_tf
+
+
 #===========================================================================================
 #Assistant functions for exporting
 
@@ -1991,289 +2658,333 @@ def fill_nans_columnwise(df, year_col: str | None = 'Year',
 
     return out, created_mask
 
-def plot_bubble_chart_from_dataframe(df, title, category_col='MG', selected_years=None, 
-                                     bubble_scale=100, parallel_offset=0.3, 
-                                     figsize=(18, 12), y_spacing=5,
-                                     title_fontsize=20, label_fontsize=16, tick_fontsize=14, 
-                                     legend_fontsize=12):
+def plot_bubble_chart_from_dataframe(df, title, category_col='MG', year_interval=4, bubble_scale=100, parallel_offset = 1.2, figsize=(18, 12), x_spacing=1.5, y_spacing=5):
     """
     Create a bubble chart showing population distribution by category over time.
     
     Parameters:
     - df: DataFrame with columns for category, year, and bin data (percentages)
-    - title: Chart title
+    - y_label: Label for y-axis (default: "Bin Size")
+    - y_unit: Unit for y-axis (default: "cm")
     - category_col: Column name for categories (default: 'MG')
-    - selected_years: List of actual years to plot (e.g., [2000, 2004, 2008, 2012]) or None for all years
+    - year_interval: Select every Nth year (default: 4 for every 4th year)
+    - year_start: Starting year for converting model years to actual years (default: 2000)
     - bubble_scale: Multiplier for bubble sizes (default: 100)
-    - parallel_offset: Horizontal offset between categories as fraction of year gap (default: 0.3)
-    - figsize: Figure size tuple (default: (18, 12))
-    - y_spacing: Extra spacing for y-axis limits (default: 5)
-    - title_fontsize: Font size for title (default: 20)
-    - label_fontsize: Font size for axis labels (default: 16)
-    - tick_fontsize: Font size for tick labels (default: 14)
-    - legend_fontsize: Font size for legends (default: 12)
     
     Expected DataFrame structure:
     - Column 0: Category (MG)
     - Column 1: Year (model years: 0, 1, 2, 3, ...)
     - Columns 2+: Bin diameter columns (5, 10, 15, ..., 100) with percentages
     """
-    import matplotlib.pyplot as plt
-    import pandas as pd
-    import numpy as np
-    import re
-    import os
     
-    # Get bin columns and extract diameters
-    bin_columns = df.columns[2:].tolist()
+    # Configuration parameters
+    parallel_offset = parallel_offset  # Horizontal offset between categories
+    
+    # Get actual bin diameter columns (columns 2 onwards contain bin data)
+    bin_columns = df.columns[2:].tolist()  # Skip category and year columns
+    
+    # Extract bin diameters from column names (assuming they contain numeric values)
     bin_diameters = []
     for col in bin_columns:
+        # Extract numeric value from column name (e.g., "Bin_5" -> 5, "5cm" -> 5, etc.)
+        import re
         numbers = re.findall(r'\d+', str(col))
         if numbers:
             bin_diameters.append(float(numbers[0]))
         else:
-            bin_diameters.append(len(bin_diameters) * 5 + 5)
+            # If no number found, use column index * 5 (assuming 5cm increments)
+            bin_diameters.append((len(bin_diameters)) * 5 + 5)
     
-    # Get years to plot - year_start is assumed to be defined elsewhere
-    all_model_years = sorted(df['Year'].unique()) if 'Year' in df.columns else [0, 4, 7, 11]
-    all_actual_years = [year + year_start for year in all_model_years]
+    MaxBinId = len(bin_diameters)
     
-    if selected_years is not None:
-        # Convert selected actual years to model years
-        selected_model_years = [year - year_start for year in selected_years]
-        # Use only the model years that exist in the data
-        years = [year for year in selected_model_years if year in all_model_years]
-        actual_years = [year + year_start for year in years]
+    # Get unique years and categories from the data
+    if 'Year' in df.columns:
+        all_years_list = sorted(df['Year'].unique().tolist())
     else:
-        years = all_model_years
-        actual_years = all_actual_years
-        print("Using all available years:")
-        print(f"Model years: {years}")
-        print(f"Actual years: {actual_years}")
+        all_years_list = [0, 4, 7, 11]
+    
+    # Select every Nth year to reduce clutter - filter by year values, not array indices
+    if year_interval > 1:
+        # Select years that are multiples of the interval
+        years = [year for year in all_years_list if year % year_interval == 0]
+    else:
+        # If interval is 1, use all years
+        years = all_years_list.copy()
+    
+    print(f"All years in data: {all_years_list}")
+    print(f"Selected years (multiples of {year_interval}): {years}")
+    
+    # Convert model years to actual years
+    actual_years = [year + year_start for year in years]
+    print(f"Actual years for display: {actual_years}")
     
     categories = sorted(df[category_col].unique()) if category_col in df.columns else ['Branching', 'Foliose', 'Other']
     
-    # Color scheme
-    color_palette = ["#1F77B4", "#C026D3", "#FF7F0E"]
-    colors = {cat: color_palette[i % len(color_palette)] for i, cat in enumerate(categories)}
+    # Color schemes for each category
+    color_palette = ["#1F77B4", "#C026D3", "#FF7F0E"]  # blue, fuchsia, orange
+    colors = {}
+    for i, category in enumerate(categories):
+        base_color = color_palette[i % len(color_palette)]
+        colors[category] = {
+            'mean': base_color,
+            'std': base_color + '40'  # Add transparency for std
+        }
     
-    # Initial category offsets (will be refined after we know bubble sizes)
+    # Calculate category offsets for parallel display
+    category_offsets = {}
     if len(categories) == 1:
-        category_offsets = {categories[0]: 0}
-    else:
-        category_offsets = {cat: (i - (len(categories)-1)/2) * parallel_offset 
-                          for i, cat in enumerate(categories)}
+        category_offsets[categories[0]] = 0
+    elif len(categories) == 2:
+        category_offsets[categories[0]] = -parallel_offset/2
+        category_offsets[categories[1]] = parallel_offset/2
+    else:  # 3 or more categories
+        for i, cat in enumerate(categories):
+            category_offsets[cat] = (i - (len(categories)-1)/2) * parallel_offset
     
-    # Prepare plot data
+    # Prepare data for plotting
     plot_data = []
+    
     for category in categories:
-        for model_year in years:
-            actual_year = model_year + year_start
+        for model_year in years:  # Use model years for filtering data
+            actual_year = model_year + year_start  # Convert to actual year for positioning
+            # Filter data for this category and model year
             year_df = df[(df[category_col] == category) & (df['Year'] == model_year)]
             
             if not year_df.empty:
-                bin_data = year_df.iloc[:, 2:]
+                # Get bin data (columns 2 onwards contain the percentage data)
+                bin_data = year_df.iloc[:, 2:]  # All bin columns
+                
+                # Calculate mean and std for each bin across all rows for this category/year
                 mean_values = bin_data.mean(axis=0)
                 std_values = bin_data.std(axis=0)
                 
+                # Create data points for each bin using actual bin diameters
                 for bin_idx, (col_name, mean_val, std_val) in enumerate(zip(bin_columns, mean_values, std_values)):
-                    if bin_idx < len(bin_diameters) and pd.notna(mean_val) and mean_val > 0:
-                        x_pos = actual_year + category_offsets[category]
-                        y_pos = bin_diameters[bin_idx]
+                    if bin_idx < len(bin_diameters):
+                        # Convert to float and check if valid
+                        try:
+                            mean_val = float(mean_val) if pd.notna(mean_val) else 0
+                            std_val = float(std_val) if pd.notna(std_val) else 0
+                        except (ValueError, TypeError):
+                            mean_val = 0
+                            std_val = 0
                         
-                        plot_data.append({
-                            'x': x_pos, 'y': y_pos, 'size': float(mean_val),
-                            'category': category, 'year': actual_year,
-                            'std': float(std_val) if pd.notna(std_val) else 0
-                        })
+                        # Always define position variables
+                        x_pos = actual_year + category_offsets[category]  # Use actual year for positioning
+                        y_pos = bin_diameters[bin_idx]  # Use actual bin diameter from column
+                        
+                        if mean_val > 0:
+                            # Add mean point (main bubble)
+                            plot_data.append({
+                                'x': x_pos,
+                                'y': y_pos,
+                                'size': mean_val,
+                                'color': colors[category]['mean'],
+                                'category': category,
+                                'year': actual_year,  # Store actual year
+                                'type': 'mean',
+                                'bin_idx': bin_idx
+                            })
+                        
+                        # Add std point (background shading) if std exists
+                        if std_val > 0:
+                            plot_data.append({
+                                'x': x_pos,
+                                'y': y_pos,
+                                'size': std_val,
+                                'color': colors[category]['std'],
+                                'category': category,
+                                'year': actual_year,  # Store actual year
+                                'type': 'std',
+                                'bin_idx': bin_idx
+                            })
     
-    # Recalculate category offsets based on actual bubble sizes
-    if len(categories) > 1 and plot_data:
-        if len(actual_years) > 1:
-            min_year_gap = min(actual_years[i+1] - actual_years[i] for i in range(len(actual_years)-1))
-            
-            # Calculate maximum bubble size for adaptive scaling
-            max_bubble_size = max(point['size'] for point in plot_data)
-            # Estimate bubble radius in data coordinates
-            bubble_radius_estimate = (max_bubble_size * bubble_scale) ** 0.5 / 200
-            # Ensure minimum separation to prevent overlap
-            min_separation = max(parallel_offset, bubble_radius_estimate * 2.5)
-            effective_offset = min(min_separation, min_year_gap * 0.3)
-        else:
-            effective_offset = parallel_offset
-            
-        # Recalculate offsets with better spacing
-        category_offsets = {cat: (i - (len(categories)-1)/2) * effective_offset 
-                          for i, cat in enumerate(categories)}
-        
-        # Update x positions in plot_data
-        for point in plot_data:
-            point['x'] = point['year'] + category_offsets[point['category']]
+    # Create the plot
+    fig, ax = plt.subplots(figsize=(15, 10))
     
-    # Create plot
-    fig, ax = plt.subplots(figsize=figsize)
-    
-    # Plot bubbles
+    # Group data by position for proper std shading around mean
+    position_data = {}
     for point in plot_data:
-        # Plot std shading (larger, transparent bubble)
-        if point['std'] > 0:
-            ax.scatter(point['x'], point['y'], 
-                      s=(point['size'] + point['std']) * bubble_scale,
-                      c=colors[point['category']], alpha=0.2, 
-                      edgecolors='none', zorder=1)
-        
-        # Plot mean bubble
-        ax.scatter(point['x'], point['y'], s=point['size'] * bubble_scale,
-                  c=colors[point['category']], alpha=0.8, 
-                  linewidth=0.5, edgecolors='black', zorder=2)
+        key = (point['x'], point['y'], point['category'])
+        if key not in position_data:
+            position_data[key] = {'mean': None, 'std': None}
+        position_data[key][point['type']] = point
     
-    # Add year separator lines
+    # Plot standard deviation as shading around mean bubbles
+    for (x, y, category), data in position_data.items():
+        if data['mean'] is not None:
+            mean_point = data['mean']
+            
+            # Plot mean bubble
+            ax.scatter(
+                mean_point['x'], 
+                mean_point['y'], 
+                s=float(mean_point['size']) * bubble_scale,  # Ensure float conversion
+                c=mean_point['color'],
+                alpha=0.8,
+                linewidth=0.5,
+                edgecolors='black',
+                zorder=2,
+                label=f'{category}' if mean_point['bin_idx'] == 0 and mean_point['year'] == actual_years[0] else ""
+            )
+            
+            # Plot std shading around the mean if std data exists
+            if data['std'] is not None:
+                std_point = data['std']
+                # Create larger bubble for std shading
+                std_size = float(mean_point['size']) + float(std_point['size'])  # Ensure float conversion
+                
+                ax.scatter(
+                    std_point['x'], 
+                    std_point['y'], 
+                    s=std_size * bubble_scale,  # Use configurable scale factor
+                    c=std_point['color'],
+                    alpha=0.2,  # Very light for background
+                    edgecolors='none',
+                    zorder=1
+                )
+    
+    # Add vertical lines to separate years (optional) - position at actual years
     if len(actual_years) > 1:
         for i in range(len(actual_years)-1):
             separator_x = (actual_years[i] + actual_years[i+1]) / 2
             ax.axvline(x=separator_x, color='lightgray', linestyle='--', alpha=0.5)
     
-    # Customize axes
-    ax.set_xlabel('Year', fontsize=label_fontsize, fontweight='bold')
-    ax.set_ylabel('Bin diameter (cm)', fontsize=label_fontsize, fontweight='bold')
+    # Customize plot appearance
+    ax.set_xlabel('Year', fontsize=14, fontweight='bold')
+    ax.set_ylabel(f'Bin diameter (cm)', fontsize=14, fontweight='bold')
     
-    # Set x-axis with shoulder margins equal to year gaps
+    # Set x-axis ticks and labels with actual years - more robust approach
     ax.set_xticks(actual_years)
-    ax.set_xticklabels([str(int(year)) for year in actual_years])
     
+    # Create distinct labels for each year
+    year_labels = []
+    for actual_year in actual_years:
+        year_labels.append(str(int(actual_year)))
+    
+    ax.set_xticklabels(year_labels, rotation=0, ha='center')
+    
+    # Force the x-axis to show the full range with proper spacing
     if len(actual_years) > 1:
-        # Calculate the actual gap between consecutive years
-        min_year_gap = min(actual_years[i+1] - actual_years[i] for i in range(len(actual_years)-1))
-        
-        # The expansion factor creates gaps between years
-        expansion_factor = 0.15  # 15% as before
-        year_gap_size = min_year_gap * expansion_factor
-        
-        # Use the same gap size for shoulder margins
-        shoulder_margin = year_gap_size
-        
-        # Apply expansion to create year gaps, but use calculated shoulder margins
         year_span = max(actual_years) - min(actual_years)
-        expanded_span = year_span * (1 + expansion_factor)
-        center = (min(actual_years) + max(actual_years)) / 2
-        
-        ax.set_xlim(center - expanded_span/2 - shoulder_margin, 
-                   center + expanded_span/2 + shoulder_margin)
+        margin = max(1, year_span * 0.1)  # 10% margin
+        ax.set_xlim(min(actual_years) - margin, max(actual_years) + margin)
     else:
-        # For single year, use a reasonable default
-        ax.set_xlim(actual_years[0] - 0.5, actual_years[0] + 0.5)
+        ax.set_xlim(actual_years[0] - 1, actual_years[0] + 1)
     
-    # Set tick label sizes
-    ax.tick_params(axis='x', labelsize=tick_fontsize)
-    ax.tick_params(axis='y', labelsize=tick_fontsize)
+    # Ensure ticks are visible and properly spaced
+    ax.tick_params(axis='x', labelsize=12)
     
-    # Set y-axis
-    if bin_diameters:
+    # Update title to reflect actual year range
+    if len(actual_years) > 1:
+        year_range = f"({actual_years[0]}-{actual_years[-1]})"
+    else:
+        year_range = f"({actual_years[0]})"
+    
+    ax.set_title(f'{title} by Category Over Time {year_range}\n(Bubble size represents {title})', fontsize=16, fontweight='bold', pad=20)
+
+# Set y-axis to show actual bin diameters with custom spacing
+    if len(bin_diameters) > 0:
         ax.set_ylim(min(bin_diameters) - y_spacing, max(bin_diameters) + y_spacing)
+        # Use actual bin diameters for y-axis ticks
         ax.set_yticks(bin_diameters)
-        ax.set_yticklabels([f'{int(d)}' for d in bin_diameters], fontsize=tick_fontsize)
-    
-    # Title
-    year_range = f"({actual_years[0]}-{actual_years[-1]})" if len(actual_years) > 1 else f"({actual_years[0]})"
-    ax.set_title(f'{title} by Category Over Time {year_range}\n(Bubble size represents {title})', 
-                fontsize=title_fontsize, fontweight='bold', pad=20)
-    
-    # Grid
+        ax.set_yticklabels([f'{int(diameter)}' for diameter in bin_diameters]) 
+
+    # Add grid for better readability
     ax.grid(True, alpha=0.3, linestyle='-', linewidth=0.5)
     
-    # Create legends outside plot area
-    # Category legend with larger markers
-    category_handles = [plt.Line2D([0], [0], marker='o', color='w', 
-                                  markerfacecolor=colors[cat], markersize=30,  # Increased from 20 to 30
-                                  markeredgecolor='black', markeredgewidth=0.5)
-                       for cat in categories]
+    # Create legend
+    legend_elements = []
+    for category in categories:
+        legend_elements.append(plt.Line2D([0], [0], marker='o', color='w', 
+                                        markerfacecolor=colors[category]['mean'], 
+                                        markersize=10, label=f'{category}',
+                                        markeredgecolor='black', markeredgewidth=0.5))
     
-    cat_legend = ax.legend(category_handles, categories, title='Categories',
-                          bbox_to_anchor=(1.02, 1), loc='upper left',
-                          frameon=True, fancybox=True, shadow=True, 
-                          fontsize=legend_fontsize, title_fontsize=legend_fontsize+2,
-                          labelspacing=1.2, handlelength=2.0, 
-                          handletextpad=1.0, borderpad=1.2)
+    # Add legend with better positioning
+    cat_legend = ax.legend(
+    handles=legend_elements,
+    loc='upper right',
+    bbox_to_anchor=(0.99, 1.00),   # (x, y) in axes coords
+    bbox_transform=ax.transAxes,   # interpret bbox in axes coords
+    frameon=True,
+    fancybox=True,
+    shadow=True,
+    fontsize=12
+)
+
+    # Bubble size legend: collect the sizes used for mean bubbles
+    _used_sizes = [p['size'] for p in plot_data if p['type'] == 'mean' and p['size'] > 0]
+
+    if _used_sizes:
+        vmin = float(min(_used_sizes))
+        vmax = float(max(_used_sizes))
     
-    # Size legend
-    sizes = [p['size'] for p in plot_data if p['size'] > 0]
-    if sizes:
-        vmin, vmax = min(sizes), max(sizes)
-        
-        # Always create exactly 3 distinct values: small, middle, and large
-        if vmax > vmin:
-            # Small: 10th percentile value (avoids zeros)
-            small_val = np.percentile(sizes, 10)
-            
-            # Large: actual maximum value
-            large_val = vmax  
-            
-            # Middle: halfway between small and large
-            middle_val = (small_val + large_val) / 2
-            
-            tick_vals = np.array([small_val, middle_val, large_val])
-            
-            tick_vals = np.array([small_val, middle_val, large_val])
-            
-            # Simple rounding to avoid too many decimals
-            if vmax >= 1000:
-                tick_vals = np.round(tick_vals, -1)  # Round to nearest 10
-            elif vmax >= 100:
-                tick_vals = np.round(tick_vals, 0)   # Round to nearest 1
-            elif vmax >= 10:
-                tick_vals = np.round(tick_vals, 1)   # Round to 1 decimal
-            else:
-                tick_vals = np.round(tick_vals, 2)   # Round to 2 decimals
-            
-            # Ensure all values are distinct and positive
-            tick_vals = tick_vals[tick_vals > 0]
-            tick_vals = np.unique(tick_vals)
-            
-            # If we lost values due to rounding, spread them out manually
-            if len(tick_vals) < 3:
-                tick_vals = np.array([vmin, (vmin + large_val) / 2, large_val])
-                if vmax >= 100:
-                    tick_vals = np.round(tick_vals, 0)
-                else:
-                    tick_vals = np.round(tick_vals, 1)
-        else:
-            # All values are the same
-            tick_vals = np.array([vmin])
-        
-        # Create legend bubbles that match the actual plot bubble sizes exactly
-        size_handles = [ax.scatter([], [], s=val * bubble_scale, color='black', 
-                                  alpha=0.6, edgecolors='black') for val in tick_vals]
-        
-        # Format labels based on value range
-        if np.max(tick_vals) >= 1000:
-            size_labels = [f"{int(val):,}" for val in tick_vals]
-        elif np.max(tick_vals) >= 100:
-            size_labels = [f"{int(val)}" for val in tick_vals]
-        elif np.max(tick_vals) >= 1:
-            size_labels = [f"{val:.1f}" for val in tick_vals]
-        else:
-            size_labels = [f"{val:.2f}" for val in tick_vals]
-        
-        size_legend = ax.legend(size_handles, size_labels, title=f"{title} Scale",
-                               bbox_to_anchor=(1.02, 0.65), loc='upper left',
-                               frameon=True, fancybox=True, 
-                               fontsize=legend_fontsize, title_fontsize=legend_fontsize+2,
-                               labelspacing=2.0, handlelength=3.0, 
-                               handletextpad=1.2, borderpad=1.5,
-                               columnspacing=1.0)
-        
-        # Keep both legends
-        ax.add_artist(cat_legend)
+        # dynamic base = 1/5 of max bubble value
+        base = max(vmax / 5.0, 1e-12)
     
-    # Adjust layout to accommodate external legends
+        # pick 3 representative values between vmin and vmax
+        raw_ticks = np.linspace(vmin, vmax, 3)
+    
+        # --- neat rounding: choose granularity to keep ~3 significant digits ---
+        exp = int(np.floor(np.log10(base)))         # order of magnitude of base
+        gran = 10 ** max(exp - 2, 0)                # e.g. base=17729 -> exp=4 -> gran=10**2=100
+    
+        # snap to nearest multiple of gran
+        tick_vals = np.round(raw_ticks / gran) * gran
+        tick_vals = np.array(sorted(set(tick_vals)))
+        tick_vals[tick_vals <= 0] = gran  # avoid zero-size markers
+    
+        # fallback if rounding collapsed distincts
+        if tick_vals.size < 3:
+            mids = [vmin, (vmin + vmax)/2.0, vmax]
+            tick_vals = np.array(sorted(set(np.round(np.array(mids)/gran) * gran)))
+            tick_vals[tick_vals <= 0] = gran
+
+    # build legend handles with SAME size mapping (s = value * bubble_scale)
+    size_handles = [
+        ax.scatter([], [], s=float(val) * bubble_scale, color='black', alpha=0.35, edgecolors='black')
+        for val in tick_vals
+    ]
+
+    # pretty labels: integers with commas when gran >= 1; otherwise sensible decimals
+    def _fmt(v):
+        if gran >= 1:
+            return f"{int(v):,}"
+        # decimals: number of places based on gran (e.g., gran=0.01 -> 2 dp)
+        places = max(0, int(np.ceil(-np.log10(gran))))
+        return f"{v:.{places}f}"
+        
+    size_labels = [_fmt(val) for val in tick_vals]
+
+    size_legend = ax.legend(
+        size_handles, size_labels,
+        title=f"{title} scale",
+        loc="upper right",
+        bbox_to_anchor=(0.99, 0.89),      # same x, lower y (under the category legend)
+        bbox_transform=ax.transAxes,
+        frameon=True, fancybox=True, shadow=False,
+        fontsize=11,
+        title_fontsize=12,
+        borderpad=1.4,      # ↑ makes the legend box itself roomier
+        labelspacing=1.5,
+        handlelength=2.2,
+        handletextpad=0.8,
+        borderaxespad=0.0
+)
+    # keep both legends
+    ax.add_artist(cat_legend)
+
+    # Define the graph directory path
+    graph_dir = r'output/figures'
+
+    # Save the combined plot to the specified folder
+    graph_path = os.path.join(graph_dir, f'{title} bubble_graph.png')
+    plt.savefig(graph_path)
+
+    # Adjust layout and display
     plt.tight_layout()
-    plt.subplots_adjust(right=0.85)
-    
-    # Save plot
-    graph_dir = 'output/figures'
-    os.makedirs(graph_dir, exist_ok=True)
-    graph_path = os.path.join(graph_dir, f'{title}_bubble_graph.png')
-    plt.savefig(graph_path, bbox_inches='tight', dpi=300, facecolor='white')
     plt.show()
+    
     
     return fig, ax

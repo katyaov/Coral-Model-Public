@@ -68,23 +68,372 @@ brooder_survival_rates = [0.27, 0.61, 0.63, 0.65] #yearly rates
 spawner_branching_survival_rates = [0.81, 0.93, 0.88, 0.9]
 spawner_other_survival_rates = [0.865, 0.83, 0.91, 0.925]
 
-if not use_custom_coral_population_size_distribution:
-    PSD_T0 = pd.DataFrame({
-    'Bins':[5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100],    
-     'Branching': [1.0, 8.5, 11.5, 10.2, 9.3, 8.4, 7.5, 6.6, 5.7, 4.7, 3.8, 3.2, 3.0, 2.9, 2.7, 2.5, 2.4, 2.2, 2.1, 1.9],
-    'Foliose': [2.8, 13.3, 14.2, 7.6, 7.0, 6.4, 5.8, 5.2, 4.6, 4.0, 3.5, 2.8, 2.8, 2.8, 2.8, 2.8, 2.8, 2.8, 2.8, 2.8],
-    'Other': [18.8, 25.3, 19.7, 4.7, 4.3, 4.0, 3.6, 3.3, 2.9, 2.6, 2.2, 1.9, 1.6, 1.4, 1.2, 0.9, 0.7, 0.5, 0.3, 0.0]
-})
+# ###
+# if not use_custom_coral_population_size_distribution:
+#     #clearwater Indopacific <5m deep reef
+#     PSD_T0 = pd.DataFrame({
+#     'Bins':[5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100],    
+#      'Branching': [1.0, 8.5, 11.5, 10.2, 9.3, 8.4, 7.5, 6.6, 5.7, 4.7, 3.8, 3.2, 3.0, 2.9, 2.7, 2.5, 2.4, 2.2, 2.1, 1.9],
+#     'Foliose': [2.8, 13.3, 14.2, 7.6, 7.0, 6.4, 5.8, 5.2, 4.6, 4.0, 3.5, 2.8, 2.8, 2.8, 2.8, 2.8, 2.8, 2.8, 2.8, 2.8],
+#     'Other': [18.8, 25.3, 19.7, 4.7, 4.3, 4.0, 3.6, 3.3, 2.9, 2.6, 2.2, 1.9, 1.6, 1.4, 1.2, 0.9, 0.7, 0.5, 0.3, 0.0]
+# })
 
+# else:
+#     reference_size = len(custom_PSD_T0[list(custom_PSD_T0.keys())[0]])
+#     if all(len(custom_PSD_T0[key]) == reference_size for key in custom_PSD_T0):
+#         PSD_T0 = pd.DataFrame(custom_PSD_T0)
+#     else:
+#         raise ValueError("Size mismatch found in the custom population size distribution. Make sure the population size distribution lists have equal sizes")
+
+# MaxBinId = len(PSD_T0['Branching'])
+# binSize = PSD_T0['Bins'][0] # bin size in cm
+# ###
+# 
+
+
+# PSD library (reformatted for readability) with numeric bin centres (cm)
+PSD_library = {
+    ('clear', '<5m', 'IP'): {
+        'Bins': [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100],
+        'Branching': [
+            1, 8.5, 11.5, 10.2, 9.3, 8.4, 7.5, 6.6, 5.7, 4.7,
+            3.8, 3.2, 3, 2.9, 2.7, 2.5, 2.4, 2.2, 2.1, 1.9
+        ],
+        'Foliose': [
+            2.8, 13.3, 14.2, 7.6, 7, 6.4, 5.8, 5.2, 4.6, 4,
+            3.5, 2.8, 2.8, 2.8, 2.8, 2.8, 2.8, 2.8, 2.8, 2.8
+        ],
+        'Other': [
+            18.8, 25.3, 19.7, 4.7, 4.3, 4, 3.6, 3.3, 2.9, 2.6,
+            2.2, 1.9, 1.6, 1.4, 1.2, 0.9, 0.7, 0.5, 0.3, 0.0
+        ],
+    },
+
+    ('clear', '5-10m', 'IP'): {
+        'Bins': [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100],
+        'Branching': [
+            2.4, 6, 9.6, 10.7, 9.8, 8.8, 7.8, 6.8, 5.8, 4.8,
+            3.9, 2.9, 2.8, 2.7, 2.7, 2.6, 2.6, 2.5, 2.5, 2.4
+        ],
+        'Foliose': [
+            2.34, 8.44, 10.31, 10.78, 9.89, 9, 8.11, 7.23, 6.34, 5.45,
+            4.56, 3.75, 3.29, 2.82, 2.36, 1.9, 1.44, 0.97, 0.51, 0.51
+        ],
+        'Other': [
+            0, 10.73, 12.87, 7.72, 7.21, 6.7, 6.19, 5.68, 5.18, 4.67,
+            4.16, 3.43, 3.38, 3.32, 3.26, 3.21, 3.15, 3.09, 3.04, 3
+        ],
+    },
+
+    ('clear', '<5m', 'Caribbean'): {
+        'Bins': [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100],
+        'Branching': [
+            1.7, 3.3, 5.1, 7, 6.6, 6.2, 5.8, 5.4, 5, 5,
+            5, 5, 4.9, 4.9, 4.9, 4.9, 4.9, 4.9, 4.9, 4.8
+        ],
+        'Foliose': [
+            2.8, 13.3, 14.2, 7.6, 7, 6.4, 5.8, 5.2, 4.6, 4,
+            3.5, 2.8, 2.8, 2.8, 2.8, 2.8, 2.8, 2.8, 2.8, 2.8
+        ],
+        'Other': [
+            22.8, 25.2, 12.3, 10.2, 8.2, 6.2, 3.1, 1.2, 1.2, 1.1,
+            1.1, 1, 1, 0.9, 0.9, 0.8, 0.8, 0.7, 0.7, 0.6
+        ],
+    },
+
+    ('clear', '5-10m', 'Caribbean'): {
+        'Bins': [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100],
+        'Branching': [
+            1.7, 3.3, 5.1, 7, 6.6, 6.2, 5.8, 5.4, 5, 5,
+            5, 5, 4.9, 4.9, 4.9, 4.9, 4.9, 4.9, 4.9, 4.8
+        ],
+        'Foliose': [
+            2.34, 8.44, 10.31, 10.78, 9.89, 9, 8.11, 7.23, 6.34, 5.45,
+            4.56, 3.75, 3.29, 2.82, 2.36, 1.9, 1.44, 0.97, 0.51, 0.51
+        ],
+        'Other': [
+            22.8, 25.2, 12.3, 10.2, 8.2, 6.2, 3.1, 1.2, 1.2, 1.1,
+            1.1, 1, 1, 0.9, 0.9, 0.8, 0.8, 0.7, 0.7, 0.6
+        ],
+    },
+
+    ('fluctuating', '<5m', 'IP'): {
+        'Bins': [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100],
+        'Branching': [
+            0, 5.1, 15.6, 13.3, 10.6, 9.3, 7.9, 6.6, 5.2, 3.9,
+            3.1, 2.6, 2.5, 2.4, 2.3, 2.2, 2.1, 2, 1.8, 1.7
+        ],
+        'Foliose': [
+            0, 5.6, 15.8, 10.1, 9.4, 7.1, 6.7, 5.8, 5.7, 4.3,
+            3.7, 3.1, 3, 3, 2.9, 2.9, 2.8, 2.8, 2.7, 2.7
+        ],
+        'Other': [
+            13.2, 17.6, 21.6, 7.6, 7.1, 4.9, 4.7, 4, 4.2, 3,
+            2.6, 2.2, 1.9, 1.6, 1.4, 1.1, 0.8, 0.5, 0.3, 0
+        ],
+    },
+
+    ('fluctuating', '5-10m', 'IP'): {
+        'Bins': [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100],
+        'Branching': [
+            0, 1.9, 14.3, 14.1, 11.3, 9.8, 8.4, 6.9, 5.5, 4,
+            3.2, 2.3, 2.3, 2.3, 2.3, 2.3, 2.3, 2.3, 2.2, 2.2
+        ],
+        'Foliose': [
+            2.19, 0.92, 11.72, 12.86, 11.89, 9.34, 8.65, 7.49, 7.13, 5.48,
+            4.63, 3.83, 3.35, 2.87, 2.39, 1.91, 1.43, 0.95, 0.5, 0.48
+        ],
+        'Other': [
+            0, 3.06, 14.11, 10.01, 9.39, 7.19, 6.85, 6.05, 6.04, 4.75,
+            4.25, 3.53, 3.43, 3.33, 3.23, 3.13, 3.03, 2.93, 2.86, 2.8
+        ],
+    },
+
+    ('fluctuating', '<5m', 'Caribbean'): {
+        'Bins': [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100],
+        'Branching': [
+            0, 0, 10.1, 10.5, 8.3, 7.4, 6.5, 5.6, 4.7, 4.1,
+            4.1, 4.2, 4.2, 4.2, 4.3, 4.3, 4.3, 4.4, 4.4, 4.3
+        ],
+        'Foliose': [
+            0, 5.6, 15.8, 10.1, 9.4, 7.1, 6.7, 5.8, 5.7, 4.3,
+            3.7, 3.1, 3, 3, 2.9, 2.9, 2.8, 2.8, 2.7, 2.7
+        ],
+        'Other': [
+            17.1, 17.5, 14.3, 13, 10.8, 7, 4.2, 2, 2.4, 1.5,
+            1.5, 1.4, 1.3, 1.2, 1.1, 1, 0.9, 0.8, 0.7, 0.6
+        ],
+    },
+
+    ('fluctuating', '5-10m', 'Caribbean'): {
+        'Bins': [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100],
+        'Branching': [
+            0, 0, 10.1, 10.5, 8.3, 7.4, 6.5, 5.6, 4.7, 4.1,
+            4.1, 4.2, 4.2, 4.2, 4.3, 4.3, 4.3, 4.4, 4.4, 4.3
+        ],
+        'Foliose': [
+            2.19, 0.92, 11.72, 12.86, 11.89, 9.34, 8.65, 7.49, 7.13, 5.48,
+            4.63, 3.83, 3.35, 2.87, 2.39, 1.91, 1.43, 0.95, 0.5, 0.48
+        ],
+        'Other': [
+            17.1, 17.5, 14.3, 13, 10.8, 7, 4.2, 2, 2.4, 1.5,
+            1.5, 1.4, 1.3, 1.2, 1.1, 1, 0.9, 0.8, 0.7, 0.6
+        ],
+    },
+
+    ('turbid', '<5m', 'IP'): {
+        'Bins': [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100],
+        'Branching': [
+            0, 1.5, 19, 15.8, 11.7, 10, 8.3, 6.6, 4.9, 3.2,
+            2.5, 2.1, 2, 2, 1.9, 1.9, 1.8, 1.8, 1.6, 1.5
+        ],
+        'Foliose': [
+            0, 0, 16.5, 12, 11.2, 7.4, 7.2, 6, 6.4, 4.3,
+            3.8, 3.1, 3, 3, 2.9, 2.8, 2.7, 2.6, 2.6, 2.5
+        ],
+        'Other': [
+            7.8, 10.1, 23.4, 10.3, 9.7, 5.8, 5.7, 4.7, 5.3, 3.3,
+            2.9, 2.5, 2.2, 1.8, 1.5, 1.2, 0.9, 0.6, 0.3, 0
+        ],
+    },
+
+    ('turbid', '5-10m', 'IP'): {
+        'Bins': [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100],
+        'Branching': [
+            0, 0, 17.6, 16.3, 12.2, 10.4, 8.6, 6.8, 5, 3.3,
+            2.5, 1.8, 1.9, 1.9, 1.9, 2, 2, 2, 2, 1.9
+        ],
+        'Foliose': [
+            0, 0, 12.51, 14.17, 13.17, 9.29, 8.79, 7.45, 7.55, 5.32,
+            4.53, 3.76, 3.28, 2.81, 2.33, 1.86, 1.38, 0.91, 0.47, 0.43
+        ],
+        'Other': [
+            0, 0, 14.66, 11.58, 10.9, 7.35, 7.17, 6.15, 6.56, 4.66,
+            4.18, 3.49, 3.36, 3.22, 3.09, 2.96, 2.83, 2.7, 2.61, 2.54
+        ],
+    },
+
+    ('turbid', '<5m', 'Caribbean'): {
+        'Bins': [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100],
+        'Branching': [
+            0, 0, 13.7, 12.9, 9.3, 8.1, 6.8, 5.5, 4.3, 3.3,
+            3.3, 3.4, 3.5, 3.5, 3.6, 3.7, 3.7, 3.8, 3.8, 3.8
+        ],
+        'Foliose': [
+            0, 0, 16.5, 12, 11.2, 7.4, 7.2, 6, 6.4, 4.3,
+            3.8, 3.1, 3, 3, 2.9, 2.8, 2.7, 2.6, 2.6, 2.5
+        ],
+        'Other': [
+            11.6, 10, 16.2, 15.7, 13.4, 7.9, 5.2, 2.7, 3.6, 1.9,
+            1.8, 1.7, 1.5, 1.4, 1.2, 1.1, 0.9, 0.8, 0.7, 0.6
+        ],
+    },
+
+    ('turbid', '5-10m', 'Caribbean'): {
+        'Bins': [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100],
+        'Branching': [
+            0, 0, 13.7, 12.9, 9.3, 8.1, 6.8, 5.5, 4.3, 3.3,
+            3.3, 3.4, 3.5, 3.5, 3.6, 3.7, 3.7, 3.8, 3.8, 3.8
+        ],
+        'Foliose': [
+            0, 0, 12.51, 14.17, 13.17, 9.29, 8.79, 7.45, 7.55, 5.32,
+            4.53, 3.76, 3.28, 2.81, 2.33, 1.86, 1.38, 0.91, 0.47, 0.43
+        ],
+        'Other': [
+            11.6, 10, 16.2, 15.7, 13.4, 7.9, 5.2, 2.7, 3.6, 1.9,
+            1.8, 1.7, 1.5, 1.4, 1.2, 1.1, 0.9, 0.8, 0.7, 0.6
+        ],
+    },
+
+    ('cyclone', '5-10m', 'IP'): {
+        'Bins': [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100],
+        'Branching': [
+            39.6, 19.8, 21.8, 5.6, 4.8, 3.9, 2.7, 1.5, 0.3, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+        ],
+        'Foliose': [
+            2.98, 16.37, 20.5, 17.68, 13.66, 9.62, 7.67, 5.72, 3.77, 1.81,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0.22
+        ],
+        'Other': [
+            0.93, 19.18, 23.73, 15.58, 11.74, 7.89, 6.21, 4.52, 2.84, 1.16,
+            0, 0, 0, 0, 0, 0, 0.59, 1.23, 1.86, 2.54
+        ],
+    },
+
+    ('cyclone', '<5m', 'Caribbean'): {
+        'Bins': [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100],
+        'Branching': [
+            50.4, 26.9, 10.6, 3.7, 3.3, 2.8, 1.7, 0.6, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+        ],
+        'Foliose': [
+            3.7, 20.8, 23.5, 14.9, 11.6, 8.3, 6.3, 4.3, 2.4, 0.4,
+            0, 0, 0, 0, 0, 0, 0, 0.6, 1.3, 2
+        ],
+        'Other': [
+            18.2, 26.8, 18.6, 14.7, 10.8, 6.9, 3.3, 0.7, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+        ],
+    },
+
+    ('cyclone', '5-10m', 'Caribbean'): {
+        'Bins': [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100],
+        'Branching': [
+            46.1, 21.1, 22, 3.4, 2.9, 2.4, 1.5, 0.5, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+        ],
+        'Foliose': [
+            2.98, 16.37, 20.5, 17.68, 13.66, 9.62, 7.67, 5.72, 3.77, 1.81,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0.22
+        ],
+        'Other': [
+            18.47, 27.32, 19.41, 14.97, 10.57, 6.17, 2.77, 0.32, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+        ],
+    },
+
+    ('cyclone', '<5m', 'IP'): {
+        'Bins': [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100],
+        'Branching': [
+            3.7, 20.8, 23.5, 14.9, 11.6, 8.3, 6.3, 4.3, 2.4, 0.4,
+            0, 0, 0, 0, 0, 0, 0, 0.6, 1.3, 2
+        ],
+        'Foliose': [
+            15.7, 27.8, 25.1, 10.9, 8.2, 5.4, 3.9, 2.3, 0.7, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+        ],
+        'Other': [
+            65.8, 34.2, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+        ],
+    },
+
+    ('bleaching', '5-10m', 'IP'): {
+        'Bins': [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100],
+        'Branching': [
+            42.6, 11.9, 9.1, 9.7, 8.3, 7, 5.8, 4.1, 1.5, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+        ],
+        'Foliose': [
+            36.01, 16.87, 9.8, 9.7, 8.41, 7.2, 6.09, 4.34, 1.58, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+        ],
+        'Other': [
+            30.97, 15.48, 11.59, 6.18, 5.05, 3.35, 3.1, 2.84, 2.59, 2.33,
+            2.08, 1.72, 1.69, 1.66, 1.63, 1.6, 1.57, 1.55, 1.52, 1.5
+        ],
+    },
+
+    ('bleaching', '<5m', 'Caribbean'): {
+        'Bins': [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100],
+        'Branching': [
+            86.7, 13.3, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+        ],
+        'Foliose': [
+            47, 53, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+        ],
+        'Other': [
+            49.9, 24.9, 8.6, 6.1, 4.1, 1.8, 0.9, 0.4, 0.4, 0.3,
+            0.3, 0.3, 0.3, 0.3, 0.3, 0.2, 0.2, 0.2, 0.2, 0.2
+        ],
+    },
+
+    ('bleaching', '5-10m', 'Caribbean'): {
+        'Bins': [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100],
+        'Branching': [
+            62.9, 6.7, 4.9, 6.3, 5.6, 4.9, 4.3, 3.2, 1.2, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+        ],
+        'Foliose': [
+            36.01, 16.87, 9.8, 9.7, 8.41, 7.2, 6.09, 4.34, 1.58, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+        ],
+        'Other': [
+            30.97, 15.48, 11.59, 6.18, 5.05, 3.35, 3.1, 2.84, 2.59, 2.33,
+            2.08, 1.72, 1.69, 1.66, 1.63, 1.6, 1.57, 1.55, 1.52, 1.5
+        ],
+    },
+}
+
+# Determine regime from reef_recent_event_type
+if reef_recent_event_type in ['bleaching', 'cyclone']:
+    regime_key = reef_recent_event_type
 else:
+    # normalise possible synonyms so keys match PSD_library
+    r = reef_regime.lower().strip()
+    if r in ('clearwater', 'clear'):
+        regime_key = 'clear'
+    elif r in ('fluctuating',):
+        regime_key = 'fluctuating'
+    elif r in ('turbid',):
+        regime_key = 'turbid'
+    else:
+        regime_key = reef_regime  # fallback to whatever user provided
+
+# Select PSD based on reef parameters
+key = (regime_key, reef_depth, reef_region)
+if not use_custom_coral_population_size_distribution:
+    if key in PSD_library:
+        PSD_T0 = pd.DataFrame(PSD_library[key])
+    else:
+        raise ValueError(f"No default PSD found for reef regime={regime_key}, depth={reef_depth}, region={reef_region}")
+else:
+    # validate custom_PSD_T0 etc.
     reference_size = len(custom_PSD_T0[list(custom_PSD_T0.keys())[0]])
-    if all(len(custom_PSD_T0[key]) == reference_size for key in custom_PSD_T0):
+    if all(len(custom_PSD_T0[k]) == reference_size for k in custom_PSD_T0):
         PSD_T0 = pd.DataFrame(custom_PSD_T0)
     else:
         raise ValueError("Size mismatch found in the custom population size distribution. Make sure the population size distribution lists have equal sizes")
 
+
+# compute MaxBinId and binSize safely
+
 MaxBinId = len(PSD_T0['Branching'])
-binSize = PSD_T0['Bins'][0] # bin size in cm
+binSize = PSD_T0['Bins'][0]  # bin size in cm
+
 
 if not use_custom_partial_mortality_rate:
     #per bin size 5-95
@@ -184,6 +533,7 @@ class CoralOptions:
         # Disturbance switches (read from user_inputs.py)
         self.bleaching = bool(bleaching)
         self.cyclone = bool(cyclone)
+        self.enable_sediment_exposure = bool(enable_sediment_exposure)
 
         # Reproduction & larvae
         self.brooder_cover = initial_brooder_cover
@@ -192,18 +542,28 @@ class CoralOptions:
             egg_density_spawner_branching_foliose,
             egg_density_spawner_other
         ]
-        self.eggs_spawning_rate = [
-            random.uniform(0.63, 0.82),
-            random.uniform(0.55, 0.67)
-        ]
-        self.eggs_fertilisation_rate = random.uniform(0.41, 0.69)
+        ####
+        # self.eggs_spawning_rate = [
+        #     random.uniform(0.63, 0.82),
+        #     random.uniform(0.55, 0.67)
+        # ]
+        # self.eggs_fertilisation_rate = random.uniform(0.41, 0.69)
 
-        # Growth slope
-        if linear_decay_growth_rate:
-            self.gr_slope = random.uniform(0.005, 0.045)
-        else:
-            self.gr_slope = random.uniform(0.05, 1)
+        # # Growth slope
+        # if linear_decay_growth_rate:
+        #     self.gr_slope = random.uniform(0.005, 0.045)
+        #     self.rate_of_decline = np.array([1 if i == 0 else 1 - (i - 1) * self.gr_slope for i in range(MaxBinId)])
+        # else:
+        #     self.gr_slope = random.uniform(0.05, 1)
+        #     self.rate_of_decline = np.array([np.exp(-self.gr_slope * binId) for binId in range(MaxBinId)])
+        # Move randomized defaults out of the constructor: set placeholders (will be set in initialize_coral)
+        self.eggs_spawning_rate = None           # will be assigned in initialize_coral()
+        self.eggs_fertilisation_rate = None      # will be assigned in initialize_coral()
+        # growth slope placeholder (randomized per run in initialize_coral / run_yearly_change)
+        self.gr_slope = None
+        # rate_of_decline will be computed in initialize_coral() (and recomputed per run in run_yearly_change)
 
+####
         # Initial benthic cover dict
         self.initial_benthic_cover_dict = {
             "total": (
@@ -245,21 +605,389 @@ class CoralOptions:
         self.available_substrate_percentage = self.initial_benthic_cover_dict['available_substrate']
         self.available_substrate_m2 = self.available_substrate_percentage * self.reef_area / 100
 
+        #rio ask katya:Minor text/typo:
+#There is a stray line "available_substrate_percentage" (no assignment) in one of your files — that will raise NameError or SyntaxError if executed.
+
         # Unavailable substrate is macro + rubble + sediment (as in your code)
         self.unavailable_substrate_percentage = macro_algae_cover + rubble_cover + sediment_cover
         self.unavailable_substrate_m2 = self.unavailable_substrate_percentage * self.reef_area / 100
         self.maximum_achievable_substrate_percentage = 100 - self.unavailable_substrate_percentage
 
+#sediment calculations
 
+
+# Calculate additional sediment exposure per month and then aggregate to yearly totals.
+# Assumes:
+# - enable_sediment_exposure: bool flag from user inputs.
+# - sedi_years: dict with keys (year, month) and values (suspended, deposited).
+# - baseline_suspended_sediment, baseline_deposited_sediment: baseline scalar values to subtract.
+# - MaxYear: integer maximum year index.
+if enable_sediment_exposure:
+    # For each (year, month) compute additional suspended and deposited sediment
+    # relative to the baselines. Clamp negatives to 0.
+    additional_sediment_exposure = {
+        (year, month): (
+            max(0.0, suspended - baseline_suspended_sediment),
+            max(0.0, deposited - baseline_deposited_sediment)
+        )
+        for (year, month), (suspended, deposited) in sedi_years.items()
+    }
+
+    # Initialize yearly totals dictionary with zero tuples for each year index
+    add_sedi_exp_per_year = {year: (0.0, 0.0) for year in range(MaxYear + 1)}
+
+    # Sum the monthly additional values into yearly totals.
+    for (year, month), (suspended, deposited) in additional_sediment_exposure.items():
+        total_suspended, total_deposited = add_sedi_exp_per_year.get(year, (0.0, 0.0))
+        add_sedi_exp_per_year[year] = (
+            total_suspended + suspended,
+            total_deposited + deposited
+        )
+else:
+    # If sediment exposure is disabled, produce a zeroed yearly dictionary
+    add_sedi_exp_per_year = {year: (0.0, 0.0) for year in range(MaxYear + 1)}
+
+
+
+#sediment exposure partial mortality relationships for each morphology 
+sedi_exp_PCM_coeff = {
+    'Branching': 0.003296,#double check these values are just HDR ... not Flores +HDR
+    'Foliose': 0.000724, 
+    'Other': 0.001645 
+    # 'Branching': 0.00154,
+    # 'Foliose': 0.000724, 
+    # 'Other': 0.001645  
+    # 'Branching': 0.154,
+    # 'Foliose': 0.0724, 
+    # 'Other': 0.1645        
+}
+
+
+sedi_exp_growth_coeff = {
+    'Branching': -0.00997,
+    'Foliose': -0.00272, 
+    'Other': -0.00533
+}         
+
+
+#sediment exposure fertilisation relationships for spawners and brooders
+sedi_exp_fertilisation_coeff = {
+    'spawner': -0.006232,
+    'brooder': 1   # this is a placeholder, as brooder fertilisation is not affected by sediment exposure  
+}
+
+#applied sediment coefficients 
+
+###RIO MOVE IN FROM UTILS
+
+def create_dhw_list(dhw_years):
+	"""
+	Create a list of degree heating week values given a dictionary of year-temperature pairs.
+	If the temperature at a given year is 0, take two-thirds of the temperature of the previous year.
+	Otherwise, take the temperature as it is given.
+
+	Parameters
+	----------
+	dhw_years : dict
+		A dictionary of year-temperature pairs.
+
+	Returns
+	-------
+	list
+		A list of degree heating week values.
+
+	"""
+	dhw_lst = [0] * (MaxYear+1)  # create a list of zeros length equals to MaxYear
+	for year, temperature in dhw_years.items():
+		dhw_lst[int(year)] = temperature  # set the temperature at the corresponding year index
+	
+	for i in range(len(dhw_lst)):
+		if dhw_lst[i] == 0:
+			if i == 0:
+				dhw_lst[i] = dhw_lst[0]
+			else:
+				dhw_lst[i] = int(2*dhw_lst[i-1]/3)
+	
+	return dhw_lst
+
+
+def create_cyclone_list(cyc_years):
+	"""
+	Create a cyclone list based on the given cyclone years, severity and distances.
+
+	Parameters
+	----------
+	cyc_years : dict
+		A dictionary containing cyclone years as keys and severity and distances as values.
+
+	Returns
+	-------
+	numpy.ndarray
+		An array representing the cyclone list where each index corresponds to a year.
+		If no cyclone data is available for a particular year, the corresponding entry is set to [0, 0].
+
+	Notes
+	-----
+	The cyclone list is created by initializing an array of zeros with a length equal to `MaxYear`.
+	The severity distances for each cyclone year are then inserted at the corresponding index in the list.
+	If no cyclone data is available for a particular year, the entry is set to [0, 0].
+	"""
+	
+	cyc_lst = [0] * (MaxYear+1)  # create a list of zeros length equals to MaxYear
+	for year, severity_distance in cyc_years.items():
+		cyc_lst[int(year)] = severity_distance  # set the temperature at the corresponding year index
+	
+	for i in range(len(cyc_lst)):
+		if cyc_lst[i] == 0:
+			cyc_lst[i] = [0,0]
+			
+	return cyc_lst
+
+# ###Rio create  ds list 
+# def create_deposited_sediment_list(add_sedi_exp_per_year):
+#     """
+#     Create a list of additional deposited sediment values per year.
+
+#     Parameters
+#     ----------
+#     add_sedi_exp_per_year : dict
+#         A dictionary with keys as relative year indices and values as (suspended, deposited) tuples.
+
+#     Returns
+#     -------
+#     list
+#         A list where each index corresponds to a year and contains the additional deposited sediment value.
+#         If no data is available for a particular year, the entry is set to 0.
+
+#     Notes
+#     -----
+#     The list is created by initializing an array of zeros with a length equal to MaxYear+1.
+#     The deposited sediment values for each year are then inserted at the corresponding index in the list.
+#     """
+#     deposited_lst = [0] * (MaxYear + 1)
+#     for year, (suspended, deposited) in add_sedi_exp_per_year.items():
+#         deposited_lst[int(year)] = deposited  # set the deposited sediment at the corresponding year index
+
+#     return deposited_lst
+
+# def eggs_decline_rate(dhw):
+# 	"""
+# 	Calculates the egg decline rate based on the degree heating weeks (DHW).
+
+# 	Parameters
+# 	----------
+# 	dhw : integer
+# 		The degree heating weeks (DHW) value.
+
+# 	Returns
+# 	-------
+# 	float
+# 		The egg decline rate.
+
+# 	"""
+# 	return 1 - 1 / (1 + eggs_decline_coefficient*np.exp(4-dhw))
+
+# def colonies_spawning_decline_rate(dhw):
+# 	"""
+# 	Calculate the decline rate of colonies spawning as a function of degree heating weeks (DHW).
+
+# 	Parameters
+# 	----------
+# 	dhw : integer
+# 		The degree heating weeks.
+
+# 	Returns
+# 	-------
+# 	float
+# 		The decline rate of colonies spawning.
+
+# 	"""
+# 	return 1 - 1 / (1 + colonies_spawning_decline_coefficient * np.exp(4 - dhw))
+
+
+
+# def get_PCM_rates_after_dhw(PCM_rates, dhw, branching_bleaching_rate, foliose_bleaching_rate, other_bleaching_rate):
+# 	"""
+# 	Calculate the PCM rates for each coral growth form given the degree heating weeks (DHW).
+
+# 	Parameters
+# 	----------
+# 	PCM_rates : pandas DataFrame
+# 		A DataFrame containing the PCM rates for each coral growth form and bin id.
+# 	dhw : integer
+# 		The degree heating weeks (DHW) value for the given year.
+
+# 	Returns
+# 	-------
+# 	pandas DataFrame
+# 		A DataFrame containing the updated PCM rates for each coral growth form and bin id based on the given DHW value.
+# 	"""
+	
+# 	# compute the array of A values
+# 	A = np.array([0.5*2**(i/(MaxBinId-1)) for i in range(MaxBinId)])
+# 	# compute the exponential term
+# 	exp_term = np.exp(4 - A * dhw)
+	
+# 	branching_bleaching_rate *= 1.05**(opts.dhw_counter-1)
+# 	foliose_bleaching_rate *= 1.05**(opts.dhw_counter-1)
+# 	other_bleaching_rate *= 1.05**(opts.dhw_counter-1)
+	
+# 	if growthOnly:
+# 		pcm_rates_dhw = WCM_rates
+# 	else:
+# 		# compute the PCM rates for each coral growth form and bin id
+# 		pcm_rates_dhw = pd.DataFrame(
+# 									{
+# 										'Branching': [(1 - PCM_rates['Branching'][j]) / (1 + branching_bleaching_rate*exp_term[j]) + PCM_rates['Branching'][j] for j in range(MaxBinId)],
+# 										'Foliose': [(1 - PCM_rates['Foliose'][j]) / (1 + foliose_bleaching_rate*exp_term[j]) + PCM_rates['Foliose'][j] for j in range(MaxBinId)],
+# 										'Other': [(1 - PCM_rates['Other'][j]) / (1 + other_bleaching_rate*exp_term[j]) + PCM_rates['Other'][j] for j in range(MaxBinId)],
+# 									}
+# 									)
+# 	return pcm_rates_dhw
+
+# ###Rio lets try this 
+# def get_PCM_rates_after_DS_exp(PCM_rates, add_sedi_exp_per_year, year, sedi_exp_PCM_coeff):
+#     """
+#     Calculate updated Partial Colony Mortality (PCM) rates for each coral type based on deposited sediment exposure.
+#     Ensures PCM rates are clipped between 0 and 1.
+
+#     This version uses a linear relationship:
+#         new_rate = base_rate + (coefficient x additional deposited_sediment)
+
+#     Parameters:
+#     - PCM_rates: pd.DataFrame with columns ['Branching', 'Foliose', 'Other'] representing base PCM rates.
+#     - add_sedi_exp_per_year: dict with keys as relative year indices and values as (suspended, deposited) tuples.
+#     - year: int, relative year index (e.g., 0 for 2005).
+#     - sedi_exp_PCM_coeff: dict with linear coefficients for each coral type.
+
+#     Returns:
+#     - updated_PCM_rates: pd.DataFrame with adjusted PCM rates.
+#     """
+#     import pandas as pd
+
+#     pcm_rates_ds = pd.DataFrame(columns=PCM_rates.columns)
+#     add_deposited_sediment = add_sedi_exp_per_year.get(year, (0, 0))[1]
+
+#     for coral_type in PCM_rates.columns:
+#         coeff = sedi_exp_PCM_coeff.get(coral_type, 0)
+#         adjusted_rates = []
+#         for base_rate in PCM_rates[coral_type]:
+#             # Ensure PCM is always between 0 and 1
+#             adjusted_rate = base_rate + coeff * add_deposited_sediment
+#             adjusted_rate = max(0, min(adjusted_rate, 1))
+#             adjusted_rates.append(adjusted_rate)
+#         pcm_rates_ds[coral_type] = adjusted_rates
+
+#     return pcm_rates_ds
+
+# def get_GR_after_ss(current_add_suspended_sediment, gr_sedi_sus_coeff):
+# 	"""
+# 	Calculate the growth rate after considering the effect of suspended sediment.
+# 	Parameters:
+# 	-----------
+# 	current_add_suspended_sediment : float
+# 		The current amount of added suspended sediment.
+# 	gr_sedi_sus_coeff : dict
+# 		A dictionary containing the growth rate coefficients for each coral type.
+# 	Returns:
+# 	--------
+# 	growth_rate_ss : dict
+# 		A dictionary containing the updated growth rates for each coral type after considering the effect of suspended sediment.
+# 	Notes:
+# 	------
+# 	This function calculates the growth rate for each coral type (Branching, Foliose, Other) after considering the effect of suspended sediment.
+# 	The growth rate is adjusted based on the amount of suspended sediment and the corresponding growth rate coefficient for each coral type.
+# 	The calculations are performed using an exponential decay function.
+# 	"""
+
+# 	if not enable_sediment_exposure:
+# 		return growth_rate
+
+# 	else:
+# 		growth_rate_ss = {i: growth_rate[i] * np.exp(-gr_sedi_sus_coeff[i] * current_add_suspended_sediment) for i in coral_type}
+# 		return growth_rate_ss
+
+
+# def get_WCM_rates_after_cyclones(WCM_rates, cyclone_severity_level, distance_to_cyclone):
+# 	"""
+# 	Calculate the WCM rates during cyclone events.
+
+# 	Parameters:
+# 	-----------
+# 	WCM_rates : DataFrame
+# 		The WCM rates for branching, foliose, and other coral types.
+# 	cyclone_severity_level : float
+# 		The severity level of the cyclone event.
+# 	distance_to_cyclone : float
+# 		The distance to the cyclone event.
+
+# 	Returns:
+# 	--------
+# 	wcm_rates_cyc : DataFrame
+# 		The updated WCM rates during cyclone events.
+
+# 	Notes:
+# 	------
+# 	This function calculates the WCM rates for branching, foliose, and other coral types during cyclone events.
+# 	The WCM rates are adjusted based on the severity level of the cyclone and the distance to the cyclone event.
+# 	The calculations are performed using exponential decay functions.
+
+# 	"""
+# 	if not cyclone:
+# 		return WCM_rates
+	
+# 	else:
+# 		cyclone_severity_level = cyclone_severity_level*2
+
+
+# 		# Fix: Create arrays that match MaxBinId exactly
+# 		pp = np.linspace(1, MaxBinId+1, MaxBinId)  # Ensures length = MaxBinId
+# 		bins = np.array([p*cyclone_bin_coefficient for p in pp])
+		
+# 		exp_term_branching = cyclone_severity_level*np.exp(-distance_to_cyclone/bins/cyclone_bin_coefficient)
+# 		exp_term_foliose = cyclone_severity_level*np.exp(-distance_to_cyclone/bins/cyclone_bin_coefficient)
+# 		exp_term_other = cyclone_severity_level*np.exp(-distance_to_cyclone/bins/cyclone_bin_coefficient)
+
+
+# 		# wcm_rates_cyc = pd.DataFrame(
+# 		# 								{
+# 		# 									'Branching': [1 - 1 / (1 + branching_cyclone_coefficient * exp_term_branching[j]) + WCM_rates['Branching'][j] for j in range(MaxBinId)],
+# 		# 									'Foliose': [1 - 1 / (1 + foliose_cyclone_coefficient * exp_term_foliose[j]) + WCM_rates['Foliose'][j] for j in range(MaxBinId)],
+# 		# 									'Other': [1 - 1 / (1 + other_cyclone_coefficient * exp_term_other[j]) + WCM_rates['Other'][j] for j in range(MaxBinId)],
+# 		# 								}
+# 		# 								)
+# 		wcm_rates_cyc = pd.DataFrame({
+#             'Branching': [1 - 1 / (1 + branching_cyclone_coefficient * exp_term_branching[j]) + WCM_rates['Branching'][j] for j in range(MaxBinId)],
+#             'Foliose': [1 - 1 / (1 + foliose_cyclone_coefficient * exp_term_foliose[j]) + WCM_rates['Foliose'][j] for j in range(MaxBinId)],
+#             'Other': [1 - 1 / (1 + other_cyclone_coefficient * exp_term_other[j]) + WCM_rates['Other'][j] for j in range(MaxBinId)],
+#         })
+		
+# 		return wcm_rates_cyc
+
+# ### end of moved in from utils
+
+
+
+
+# ###
+# if linear_decay_growth_rate:
+#     rate_of_decline = np.array([1 if i == 0 else 1 - (i - 1) * opts.gr_slope for i in range(MaxBinId)])
+# else:
+#     rate_of_decline = np.array([np.exp(-opts.gr_slope * binId) for binId in range(MaxBinId)])
 # instantiate options
 opts = CoralOptions()
 
-# 
-if linear_decay_growth_rate:
-    rate_of_decline = np.array([1 if i == 0 else 1 - (i - 1) * opts.gr_slope for i in range(MaxBinId)])
-else:
-    rate_of_decline = np.array([np.exp(-opts.gr_slope * binId) for binId in range(MaxBinId)])
+# Ensure a deterministic default gr_slope is available to build module-level rate_of_decline and growth_rate.
+# This default is only used to create the initial `growth_rate` object; the randomized gr_slope used per-run
+# will be set inside initialize_coral() and/or run_yearly_change().
+_default_gr_slope = 0.0340
+_effective_gr_slope = _default_gr_slope if getattr(opts, 'gr_slope', None) is None else opts.gr_slope
 
+if linear_decay_growth_rate:
+    rate_of_decline = np.array([1 if i == 0 else 1 - (i - 1) * _effective_gr_slope for i in range(MaxBinId)])
+else:
+    rate_of_decline = np.array([np.exp(-_effective_gr_slope * binId) for binId in range(MaxBinId)])
+    ###
 if use_custom_growth_rate:
     growth_rate_branching = growth_coefficient_branching * custom_growth_rate_branching
     growth_rate_foliose = growth_coefficient_foliose * custom_growth_rate_foliose
@@ -277,27 +1005,3 @@ growth_rate = pd.DataFrame({
 
 output_folder = 'output'
 os.makedirs(output_folder, exist_ok=True)
-
-#####Old function to check the results#####
-# Function to plot population, percentage population, and area for specific years with standard deviation shades
-def plot_graphs_with_std_shades(df, y_label, y_unit):
-    bin_diameters = [i * binSize for i in range(MaxBinId)]
-    
-    fig, axs = plt.subplots(1, 3, figsize=(18, 6))
-    
-    for idx, mg in enumerate(['Branching', 'Foliose', 'Other']):
-        for year in [0, 4, 7, 11]:
-            year_df = df[(df['MG'] == mg) & (df['Year'] == year)]
-            mean_values = year_df.iloc[:, 2:].mean()
-            std_values = year_df.iloc[:, 2:].std()
-            
-            axs[idx].plot(bin_diameters, mean_values, label=f'Year {year}')
-            axs[idx].fill_between(bin_diameters, mean_values - std_values, mean_values + std_values, alpha=0.2)
-        
-        axs[idx].set_title(f'{mg} {y_label} Over Time')
-        axs[idx].set_xlabel('Bin Diameter (cm)')
-        axs[idx].set_ylabel(f'{y_label} {y_unit}')
-        axs[idx].legend()
-    
-    plt.tight_layout()
-    plt.show()
