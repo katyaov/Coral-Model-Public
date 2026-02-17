@@ -2,7 +2,7 @@
 ## User input values                   
 ## All units are (cm) or (%) unless otherwise is mentioned 
 
-##NAME OF THE REEF: 
+##NAME OF THE REEF: Geoffrey Bay
 ## Geographic Location: 
 ##COMMENTS:
 #**********************************************************
@@ -26,7 +26,7 @@ reef_shape                = 11 # 1-12 based of Black et al 1990 #reef morphologi
 
 #start and end years
 year_start                = 2012
-year_end                  = 2032
+year_end                  = 2024
 
 MaxYear = year_end - year_start        # Number of years we want to calculate
 
@@ -37,10 +37,10 @@ MaxYear = year_end - year_start        # Number of years we want to calculate
 # ###AS
 hard_substrate_cover = 2.4
 dead_coral_cover= 4
-CCA_cover = 50#1.6
-turfing_algae_cover = 23.8
+CCA_cover = 0.8  #50 #1.6
+turfing_algae_cover = 36.1 #23.8
 # ###
-macro_algae_cover = 1#49.4
+macro_algae_cover = 36.8  #1  #49.4
 rubble_cover = 4
 sediment_cover = 5
 
@@ -67,11 +67,11 @@ sediment_cover = 5
 # sediment_cover = 5
 
 
-initial_brooder_cover = 5
+initial_brooder_cover = 1 #5
 
-initial_spawner_cover = [6.3,2.9]  # the first element is B+F and the second element is O
+initial_spawner_cover = [9.9, 7] #[6.3,2.9]  # the first element is B+F and the second element is O
 
-initial_coral_cover = {'Branching':5, 'Foliose':2.9, 'Other':5.2}
+initial_coral_cover = {'Branching': 2.6, 'Foliose': 7.3, 'Other': 8} #{'Branching':5, 'Foliose':2.9, 'Other':5.2}
 
 initial_total_coral_cover = sum(initial_coral_cover.values())
 
@@ -98,12 +98,12 @@ other_cyclone_coefficient_input = 0.3
 # choose between using your own custom parameters and the default parameters. To use
 # your own custom parameters, set the use_custom variable to True. If using ANY own parameters, include an Excel table filled using the custom_user_input template in the working directory
 #-------------------------------------------------------------------------------------
-use_custom_coral_population_size_distribution = False # if false reef parameters: region, regime, and depth (defined further down will be used to define default PSD) #OLD:custom is IP >5m chronic. default is indopacific <5m clearwater
+use_custom_coral_population_size_distribution = True #False # if false reef parameters: region, regime, and depth (defined further down will be used to define default PSD) #OLD:custom is IP >5m chronic. default is indopacific <5m clearwater
 use_custom_partial_mortality_rate = False
 use_custom_whole_mortality_rate = False
 use_custom_growth_rate = True
-bleaching = False
-cyclone = False
+bleaching = False 
+cyclone = False 
 enable_sediment_exposure = True
 
 # Load the Excel file
@@ -194,8 +194,8 @@ cyclone_years = {
 # 8. Load Sediment Exposure
 # Typical clear water oligatrophic reef has suspended sediment < 5 mg/L (<15NTU) (Zweifler et al., 2024) and deposited sediment < 10 mg/cm^-2/day (Rogers 1990, Dutra et al., 2006, Falsarella et al., 2025), these can be used to inform the default baseline values.
 #Rogers 1990 observed that ‘normal,’ background levels of sediment on coral reefs are on the order of 10 mg/cm2/day for deposition rates and 10 mg/L for total suspended sediment concentrations, above which are considered ‘high’ with the potential to adversely affect corals.
-baseline_suspended_sediment = 0
-baseline_deposited_sediment = 0
+baseline_suspended_sediment = 10
+baseline_deposited_sediment = 5
 
 sediment_df = pd.read_excel(excel_path, sheet_name='Sediment_Exposure')
 sedi_years = {
@@ -220,7 +220,7 @@ spawning_month = 11 # if spawning month is known, set the month number (1-12).
 # Units: deposited_sediment in sheet is mg/cm2/day (monthly). We compute mean of the 12 monthly values per year.
 ds_AS_threshold = 5  # unit: _mg_cm2_day . literature-informed threshold (Rogers 1990)
 #ds_AS_conversion = 0.05 
-ds_AS_conversion = 0.5 # percent-point loss of available substrate per 1 mg/cm2/day excess (tunable)
+ds_AS_conversion = 0.05 #0.5 # percent-point loss of available substrate per 1 mg/cm2/day excess (tunable)
 #ds_AS_conversion_limit = 20.0  # maximum percent-point change in one year (tunable)
 ds_AS_conversion_limit = float('inf')  # disable limiting
 

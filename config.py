@@ -615,16 +615,17 @@ class CoralOptions:
 
 #sediment calculations
 
-
-# Calculate additional sediment exposure per month and then aggregate to yearly totals.
+# Calculate additional sediment exposure per month and then aggregate to yearly averages.
 # Assumes:
 # - enable_sediment_exposure: bool flag from user inputs.
-# - sedi_years: dict with keys (year, month) and values (suspended, deposited).
+# - sedi_years: dict with keys (model_year, month) and values (suspended, deposited).
+#   NOTE: Years are already MODEL YEARS (0-based), converted in user_inputs.
 # - baseline_suspended_sediment, baseline_deposited_sediment: baseline scalar values to subtract.
 # - MaxYear: integer maximum year index.
 if enable_sediment_exposure:
-    # For each (year, month) compute additional suspended and deposited sediment
-    # relative to the baselines. Clamp negatives to 0.
+    
+    # Step 1: Calculate additional sediment above baseline for each month
+    # Baseline represents normal background sediment; only excess causes stress
     additional_sediment_exposure = {
         (year, month): (
             max(0.0, suspended - baseline_suspended_sediment),
@@ -632,17 +633,39 @@ if enable_sediment_exposure:
         )
         for (year, month), (suspended, deposited) in sedi_years.items()
     }
-
-    # Initialize yearly totals dictionary with zero tuples for each year index
-    add_sedi_exp_per_year = {year: (0.0, 0.0) for year in range(MaxYear + 1)}
-
-    # Sum the monthly additional values into yearly totals.
+    
+    # Step 2: Initialize dictionaries for averaging
+    add_sedi_exp_per_year = {}
+    yearly_counts = {}
+    
+    # Step 3: Sum monthly values for each model year
     for (year, month), (suspended, deposited) in additional_sediment_exposure.items():
-        total_suspended, total_deposited = add_sedi_exp_per_year.get(year, (0.0, 0.0))
+        if year not in add_sedi_exp_per_year:
+            add_sedi_exp_per_year[year] = (0.0, 0.0)
+            yearly_counts[year] = 0
+        
+        total_suspended, total_deposited = add_sedi_exp_per_year[year]
         add_sedi_exp_per_year[year] = (
             total_suspended + suspended,
             total_deposited + deposited
         )
+        yearly_counts[year] += 1
+    
+    # Step 4: Convert sums to AVERAGES
+    for year in list(add_sedi_exp_per_year.keys()):
+        if yearly_counts[year] > 0:
+            total_susp, total_dep = add_sedi_exp_per_year[year]
+            add_sedi_exp_per_year[year] = (
+                total_susp / yearly_counts[year],
+                total_dep / yearly_counts[year]
+            )
+    
+    # Step 5: Ensure all model years (0 to MaxYear) have entries
+    # Fill missing years with zeros
+    for year in range(MaxYear + 1):
+        if year not in add_sedi_exp_per_year:
+            add_sedi_exp_per_year[year] = (0.0, 0.0)
+    
 else:
     # If sediment exposure is disabled, produce a zeroed yearly dictionary
     add_sedi_exp_per_year = {year: (0.0, 0.0) for year in range(MaxYear + 1)}
@@ -677,6 +700,37 @@ sedi_exp_fertilisation_coeff = {
 }
 
 #applied sediment coefficients 
+
+# ==============================================================================
+# RECOVERY LAG PARAMETERS
+# ==============================================================================
+# These parameters control how long sediment stress effects persist after
+# sediment levels drop back to baseline
+
+# Growth rate recovery
+# Stress memory decays exponentially: stress[year] = stress[year-1] * decay + current
+# Lower value = faster recovery. E.g.: 0.4 (fast recovery) vs. 0.9 (slow recovery)
+growth_recovery_decay = 0.8  # a multiplier applied to the remaining stress each year. E.g. 0.4 means that 60% of stress removed (and 40% retained) per year and recovery is fast
+
+# Mortality (PCM) recovery  
+# Similar exponential decay for mortality stress, same logic as above - lower value = faster recovery
+pcm_recovery_decay = 0.8  # a multiplier applied to the remaining stress each year
+
+# Fertilization recovery
+# Number of years after sediment event where fertilization remains impaired
+fert_recovery_years = 2  # Reduced fertility for 2 years post-event
+fert_recovery_max_impairment = 0.5  # Level of impairment to start at, tunable (0.3 - 30% impairment (mild) to 0.7 - 70% (severe)). Means fertilization rate is reduced by e.g. 50% in the spike year, then linearly recovers to 0% impairment over fert_recovery_years.
+
+# Substrate recovery slowdown
+# Factor by which substrate recovery is slower than burial
+# 0.2 means recovery takes 5x longer than burial (0.1 (very slow, 10 years to recover at 10% per year) to 0.5 (moderately slow, 50% recovered every year, 2 years to recover)
+substrate_recovery_slowdown = 0.5 #a multiplier on the recovery rate, how much of substrate gets recovered from the original loss per year. 
+
+# Initialize stress memory dictionaries (will be populated during model run)
+# These track cumulative stress that persists between years
+growth_stress_memory = {}  # Tracks growth rate stress by coral type
+pcm_stress_memory = {}     # Tracks mortality stress by coral type
+last_sediment_event_year = -999  # Tracks when last significant sediment occurred
 
 ###RIO MOVE IN FROM UTILS
 

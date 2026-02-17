@@ -78,6 +78,7 @@ def get_spawn_month_current():
     return get_spawn_month_for_run(_current_run_id)
 # --- end spawn-month helpers ---
 
+
 def get_recruited_corals(available_substrate_percentage, pop_flag = True):
     '''
     Calculates the estimated area or population of different coral species that will recruit to a given area of substrate.
@@ -115,7 +116,20 @@ def get_recruited_corals(available_substrate_percentage, pop_flag = True):
     # Calculate the number of brooder recruits that survive
     available_substrate_m2 = available_substrate_percentage * opts.reef_area / 100
     current_total_coral_cover = 100 - opts.unavailable_substrate_percentage - available_substrate_percentage
-    num_recruits_brooder = number_planulae_released_per_m2 * available_substrate_m2 *(1-(current_total_coral_cover/opts.maximum_achievable_substrate_percentage)**opts.growth_parameter)
+    
+    # Density dependence: recruitment stops when coral cover reaches maximum
+    # COMPLETELY avoid power calculation when ratio >= 1
+    max_achievable = opts.maximum_achievable_substrate_percentage
+    if current_total_coral_cover >= max_achievable or max_achievable <= 0:
+        density_factor = 0.0  # No recruitment when at/above carrying capacity
+    else:
+        ratio = np.clip(current_total_coral_cover / max_achievable, 0.0, 0.99)
+        if ratio >= 0.99:  # Should never happen now due to clip
+            density_factor = 0.0
+        else:
+            density_factor = 1.0 - ratio ** opts.growth_parameter
+    
+    num_recruits_brooder = number_planulae_released_per_m2 * available_substrate_m2 * density_factor
     
     for rate in brooder_mortality_rate:
         num_recruits_brooder *= (1 - rate)
@@ -136,40 +150,46 @@ def get_recruited_corals(available_substrate_percentage, pop_flag = True):
     if not getattr(opts, 'enable_sediment_exposure', False):
         fertilised_eggs = [opts.eggs_fertilisation_rate * eggs for eggs in num_eggs_spawning]
     else:
-# Determine spawning month: use run-consistent month (fixed for the current run)
-        # set_current_run_id(run_id) must be called before the run to ensure a cached month exists.
         spawn_month = get_spawn_month_current()
-
-        # Model year index (use opts.year if present, else 0)
         model_year = int(getattr(opts, 'year', 0))
-
-        # Default: no suspended sediment in that month
         add_suspended_in_month = 0.0
         if 'additional_sediment_exposure' in globals():
-            # additional_sediment_exposure[(year, month)] -> (suspended, deposited)
             add_suspended_in_month = additional_sediment_exposure.get((model_year, spawn_month), (0.0, 0.0))[0]
-        else:
-                # No baseline available -> do not apply suspended-sediment effect
-            add_suspended_in_month = 0.0
-
-        # Start from base fertilisation rate and reduce if suspended sediment present
+        
         eggs_fert_rate_this_year = opts.eggs_fertilisation_rate
-        if add_suspended_in_month > 0:#Only apply sediment effect when there is a positive additional suspended sediment value.
+        last_event_year = globals().get('last_sediment_event_year', -999)
+        recovery_years = globals().get('fert_recovery_years', 3)
+        
+        if add_suspended_in_month > 0:
+            globals()['last_sediment_event_year'] = model_year
+            last_event_year = model_year
+        
+        years_since_event = model_year - last_event_year
+        
+        if add_suspended_in_month > 0 or years_since_event <= recovery_years:
+            coeff = globals().get('sedi_exp_fertilisation_coeff', {}).get('spawner', -0.006232)
+            susc = globals().get('sediment_susceptibilityF', 1.0)
+            max_impairment = globals().get('fert_recovery_max_impairment', 0.5)
             
-            coeff = globals().get('sedi_exp_fertilisation_coeff', {}).get('spawner')
-
-            susc = globals().get('sediment_susceptibilityF')
-            #coeff is negative 
-            raw = max(-1, min(0, coeff * add_suspended_in_month))  # Clamp to [-1, 0] to avoid over-reduction
-            effective =max(-1, min(0,raw *susc))
-            factor = max(0, min(1, 1+effective))  # 100% - relative decline in fertilization = percentage of eggs fertalised # Clamp to [0, 1] to avoid negative or amplified rates
+            if coeff is None:
+                coeff = -0.006232
+            if susc is None:
+                susc = 1.0
+            
+            if add_suspended_in_month > 0:
+                raw = max(-1, min(0, coeff * add_suspended_in_month))
+                effective = max(-1, min(0, raw * susc))
+                factor = max(0, min(1, 1 + effective))
+            else:
+                recovery_progress = min(1.0, years_since_event / recovery_years)
+                impairment = max_impairment * (1.0 - recovery_progress)
+                factor = 1.0 - impairment
+            
             eggs_fert_rate_this_year *= factor
 
-        # Apply fertilisation rate to each spawner egg pool
         fertilised_eggs = [eggs_fert_rate_this_year * eggs for eggs in num_eggs_spawning]
 
-
-    coeff_retained =  get_retention_rate() # retension rate based on reef shape
+    coeff_retained = get_retention_rate()
     eggs_retained = [coeff_retained[i]*fertilised_eggs[i]for i in range(len(fertilised_eggs))]
     
     coeff_survived = [0.84*0.87*0.93*0.94*0.95*0.96*0.965*0.97,0.915**3*0.91]
@@ -195,6 +215,14 @@ def get_recruited_corals(available_substrate_percentage, pop_flag = True):
     recruited_foliose_area_m2 = surfaceArea_spawner_m2[0] * opts.current_coral_cover['Foliose']/(opts.current_coral_cover['Branching'] + opts.current_coral_cover['Foliose'])
     recruited_other_area_m2 = surfaceArea_spawner_m2[1]
     
+    # Safety: ensure no NaN values
+    if np.isnan(recruited_branching_area_m2):
+        recruited_branching_area_m2 = 0.0
+    if np.isnan(recruited_foliose_area_m2):
+        recruited_foliose_area_m2 = 0.0
+    if np.isnan(recruited_other_area_m2):
+        recruited_other_area_m2 = 0.0
+    
     recruited_branching_population = get_population_number_from_surface_area(0,recruited_branching_area_m2)
     recruited_foliose_population = get_population_number_from_surface_area(0,recruited_foliose_area_m2)
     recruited_other_population = get_population_number_from_surface_area(0,recruited_other_area_m2)
@@ -204,9 +232,9 @@ def get_recruited_corals(available_substrate_percentage, pop_flag = True):
     
     if pop_flag:
         return [ int(recruited_branching_population), int(recruited_foliose_population), int(recruited_other_population) ]
-
     else:
         return [ recruited_branching_area_m2, recruited_foliose_area_m2, recruited_other_area_m2 ]
+
 #below is in the old version before katya 2nd batch of changes 11092025
     # if no_recruitment:
     # 	return [0, 0, 0]
@@ -807,6 +835,11 @@ def initialize_coral():
     """
     Initialize the coral ecosystem at year = 0.
     """
+    #Clear stress memroty first
+    globals()['growth_stress_memory'] = {}
+    globals()['pcm_stress_memory'] = {}
+    globals()['last_sediment_event_year'] = -999
+
     # Ensure attributes exist with defaults
     if not hasattr(opts, "bleaching"):
         opts.bleaching = True
@@ -1087,7 +1120,20 @@ def count_new_population_per_bin(binId,population,growth_rate,pcm_rate,wcm_rate,
     else:
     #RIO: might have to apply current growth rate here
         arr = np.array(np.linspace(lower_diameter,upper_diameter,100))
-        arr += growth_rate * (1 - (current_total_coral_cover / opts.maximum_achievable_substrate_percentage)**opts.growth_parameter)
+        # KATYA: there was an issue where total_coral_cover was exceeding maximum available space, this is the fix:
+        # Density dependence: growth slows as coral cover approaches maximum
+        # Avoid power calculation issues when coral cover >= maximum
+        max_achievable = opts.maximum_achievable_substrate_percentage
+        if current_total_coral_cover >= max_achievable or max_achievable <= 0:
+            density_factor = 0.0
+        else:
+            ratio = np.clip(current_total_coral_cover / max_achievable, 0.0, 0.99)
+            if ratio >= 0.99:  # Should never happen now due to clip
+                density_factor = 0.0
+            else:
+                density_factor = 1.0 - ratio ** opts.growth_parameter
+        arr += growth_rate * density_factor
+        
         #arr *= np.sqrt(1-pcm_rate) #pcm was negative so couldnt find sqt root #Make sure all values in PCM_rates and any adjusted PCM rates (e.g., after sediment or DHW) are between 0 and 1.
         arr *= np.sqrt(np.clip(1-pcm_rate, 0, None)) # ensure non-negative values for very high pcm_rate
         # arr *= np.sqrt(1-wcm_rate)
@@ -1186,8 +1232,6 @@ def calculate_population_change(oldPop,growth_rate,pcm_rate,wcm_rate,available_s
         
     return newPoplist.astype(int)
 
-
-
 def run_yearly_change(PSD_df, Years):
     """
     Runs yearly coral population growth based on the given parameters.
@@ -1204,29 +1248,8 @@ def run_yearly_change(PSD_df, Years):
     pandas.DataFrame
         A dataframe containing yearly total coral cover data.
     """
-    
-    # Generate random growth slope for each run, with proper seeding
-    # Use numpy random instead of Python's random for better control
-    opts.gr_slope = np.random.uniform(0.01, 0.04) #comutes growth slope for each run 
-###ADDED THIS TO ALLOW: growth rate to be upated based on growth slope per run
-###
-        # Recompute per-bin decline and rebuild growth_rate so the new slope takes effect
-    if linear_decay_growth_rate:
-        _rate_of_decline = np.array([1 if i == 0 else 1 - (i - 1) * opts.gr_slope for i in range(MaxBinId)])
-    else:
-        _rate_of_decline = np.array([np.exp(-opts.gr_slope * binId) for binId in range(MaxBinId)])
-
-    # Rebuild the per-morphology growth_rate DataFrame used later in the year loop
-    growth_rate = pd.DataFrame({
-        'Branching': growth_rate_branching * _rate_of_decline,
-        'Foliose':   growth_rate_foliose   * _rate_of_decline,
-        'Other':     growth_rate_other     * _rate_of_decline,
-    })
-###
-
-
     opts.dhw_counter = 0
-        
+    
     # Run simulation for given number of years
     for year in range(1, Years + 1):
         opts.year = year
@@ -1234,10 +1257,8 @@ def run_yearly_change(PSD_df, Years):
         # Handle bleaching only if enabled
         if getattr(opts, "bleaching", True) and opts.dhw_lst is not None:
             opts.current_dhw = opts.dhw_lst[opts.year]
-            # count the number of bleaching that took place
             if opts.current_dhw != 0:
-                # every time bleaching happens the coral becomes resilient to bleaching
-                # hence update the coefficient
+                # Every time bleaching happens the coral becomes more resilient
                 opts.dhw_counter += 1
         else:
             opts.current_dhw = 0
@@ -1248,38 +1269,7 @@ def run_yearly_change(PSD_df, Years):
         else:
             opts.current_cyc = [0, 0]
 
-        
-        ###Rio 
-        #removing below to Replace the sediment-handling block inside run_yearly_change so current_growth_rate is computed and then used in calculate_population_change calls
-        
-        # Handle sediment exposure only if enabled
-        # if getattr(opts, "enable_sediment_exposure", True) and opts.add_deposited_sediment_lst is not None:
-        # 	opts.current_add_deposited_sediment = opts.add_deposited_sediment_lst[opts.year]
-        # 	###RIO adjust below if you want to add resilince with exposure 
-        # 	# count the number of bleaching that took place
-        # 	#if opts.current_add_deposited_sediment != 0:
-        # 		# every time bleaching happens the coral becomes resilient to bleaching
-        # 		# hence update the coefficient
-        # 	#	opts.dhw_counter += 1
-        # else:
-        # 	opts.current_add_deposited_sediment = 0
-
-        # 	#rio gr
-        # 	GR_ss = get_GR_after_ss(opts.current_add_suspended_sediment, gr_sedi_sus_coeff)
-
-        # if getattr(opts, "enable_sediment_exposure", True) and getattr(opts, "add_deposited_sediment_lst", None) is not None:
-        #     opts.current_add_deposited_sediment = opts.add_deposited_sediment_lst[opts.year]
-        #     opts.current_add_suspended_sediment = opts.add_suspended_sediment_lst[opts.year]
-        # else:
-        #     opts.current_add_deposited_sediment = 0
-        #     opts.current_add_suspended_sediment = 0
-
-        # # --- NEW: apply RAW-months-based deposited-sediment -> AS adjustment ---
-        # # adjust_AS_based_on_DS reads raw monthly values from global `sedi_years` and will raise an error
-        # # if sedi_years or required parameters/keys are missing (no silent fallbacks).
-        # if getattr(opts, "enable_sediment_exposure", False):
-        #     ds_diag = adjust_AS_based_on_DS(opts, opts.year)
-        #     # ds_diag contains {'mean_monthly_ds','loss_pct','recovered_pct'} - record if desired
+        # Handle sediment exposure
         if getattr(opts, "enable_sediment_exposure", True) and getattr(opts, "add_deposited_sediment_lst", None) is not None:
             opts.current_add_deposited_sediment = opts.add_deposited_sediment_lst[opts.year]
             opts.current_add_suspended_sediment = opts.add_suspended_sediment_lst[opts.year]
@@ -1287,71 +1277,34 @@ def run_yearly_change(PSD_df, Years):
             opts.current_add_deposited_sediment = 0
             opts.current_add_suspended_sediment = 0
 
-        # compute growth rates for this year (use suspended-sediment adjusted growth if enabled)
+        # Compute growth rates for this year (suspended sediment adjusted if enabled)
         if getattr(opts, "enable_sediment_exposure", True):
-            # get_GR_after_ss returns a DataFrame with the same columns as global `growth_rate`
             current_growth_rate = get_GR_after_ss(growth_rate, add_sedi_exp_per_year, opts.year, sedi_exp_growth_coeff)
         else:
             current_growth_rate = growth_rate
-        # end of removing above
 
+        # Calculate mortality rates
         PCM_rates_dhw = get_PCM_rates_after_dhw(PCM_rates, opts.current_dhw, branching_bleaching_rate, foliose_bleaching_rate, other_bleaching_rate)
-        #PCM_rates_ds = get_PCM_rates_after_DS_exp(PCM_rates, opts.current_add_deposited_sediment, sedi_exp_PCM_coeff)
-        PCM_rates_ds = get_PCM_rates_after_DS_exp(
-            PCM_rates,
-            add_sedi_exp_per_year,   # dictionary from config.py
-            opts.year,               # current year index
-            sedi_exp_PCM_coeff      # coefficients from config.py
-        )
-
-
-
+        PCM_rates_ds = get_PCM_rates_after_DS_exp(PCM_rates, add_sedi_exp_per_year, opts.year, sedi_exp_PCM_coeff)
+        
+        # Combine bleaching and sediment mortalities
+        PCM_rates_combined = combine_PCM_rates(PCM_rates_dhw, PCM_rates_ds)
+        
         WCM_rate_cyc = get_WCM_rates_after_cyclones(WCM_rates, opts.current_cyc[0], opts.current_cyc[1])
 
-#tried to include both decline from ds and from dhw.. didnt work 
-#		new_branching_pop = calculate_population_change(opts.current_population_df['Branching'], growth_rate['Branching'],PCM_rates_dhw['Branching'],PCM_rates_ds['Branching'],WCM_rate_cyc['Branching'],opts.current_total_coral_cover,'Branching')
-#		new_foliose_pop = calculate_population_change(opts.current_population_df['Foliose'], growth_rate['Foliose'],PCM_rates_dhw['Foliose'],PCM_rates_ds['Foliose'],WCM_rate_cyc['Foliose'],opts.current_total_coral_cover,'Foliose')
-#		new_other_pop = calculate_population_change(opts.current_population_df['Other'], growth_rate['Other'],PCM_rates_dhw['Other'],PCM_rates_ds['Other'],WCM_rate_cyc['Other'],opts.current_total_coral_cover,'Other')
-#for this version of the model I will include only the impact of ds
-        
-
-        #commented out code block below to incorp current gr into current total coral cover calc 
-        # new_branching_pop = calculate_population_change(
-        # 	opts.current_population_df['Branching'],
-        # 	growth_rate['Branching'],
-        # 	PCM_rates_ds['Branching'],
-           #  	WCM_rate_cyc['Branching'],
-        # 	opts.current_total_coral_cover,
-        # 	'Branching'
-        # )
-        # new_foliose_pop = calculate_population_change(
-        # 	opts.current_population_df['Foliose'],
-        # 	growth_rate['Foliose'],
-        # 	PCM_rates_ds['Foliose'],
-        # 	WCM_rate_cyc['Foliose'],
-        # 	opts.current_total_coral_cover,
-        # 	'Foliose'
-        # )
-        # new_other_pop = calculate_population_change(
-        # 	opts.current_population_df['Other'],
-        # 	growth_rate['Other'],
-        # 	PCM_rates_ds['Other'],
-        # 	WCM_rate_cyc['Other'],
-        # 	opts.current_total_coral_cover,
-        # 	'Other'
-        # )
+        # Calculate population changes using current (sediment-adjusted) growth rates
         new_branching_pop = calculate_population_change(
             opts.current_population_df['Branching'],
             current_growth_rate['Branching'],
-            PCM_rates_ds['Branching'],
-                WCM_rate_cyc['Branching'],
+            PCM_rates_combined['Branching'],
+            WCM_rate_cyc['Branching'],
             opts.current_total_coral_cover,
             'Branching'
         )
         new_foliose_pop = calculate_population_change(
             opts.current_population_df['Foliose'],
             current_growth_rate['Foliose'],
-            PCM_rates_ds['Foliose'],
+            PCM_rates_combined['Foliose'], 
             WCM_rate_cyc['Foliose'],
             opts.current_total_coral_cover,
             'Foliose'
@@ -1359,41 +1312,39 @@ def run_yearly_change(PSD_df, Years):
         new_other_pop = calculate_population_change(
             opts.current_population_df['Other'],
             current_growth_rate['Other'],
-            PCM_rates_ds['Other'],
+            PCM_rates_combined['Other'], 
             WCM_rate_cyc['Other'],
             opts.current_total_coral_cover,
             'Other'
         )
 
-
-
-        opts.current_population_df = pd.DataFrame({ 'Branching': np.array([pop for pop in new_branching_pop]), 
-                                                    'Foliose': np.array([pop for pop in new_foliose_pop]), 
-                                                    'Other': np.array([pop for pop in new_other_pop])})
+        opts.current_population_df = pd.DataFrame({ 
+            'Branching': np.array([pop for pop in new_branching_pop]), 
+            'Foliose': np.array([pop for pop in new_foliose_pop]), 
+            'Other': np.array([pop for pop in new_other_pop])
+        })
         
         # Calculate new surface area based on new population
-        new_branching_area = np.array([get_surface_area_from_population(j,new_branching_pop[j])  for j in range(0,MaxBinId)])
-        new_foliose_area = np.array([get_surface_area_from_population(j,new_foliose_pop[j])  for j in range(0,MaxBinId)])
-        new_other_area = np.array([get_surface_area_from_population(j,new_other_pop[j])  for j in range(0,MaxBinId)])
+        new_branching_area = np.array([get_surface_area_from_population(j, new_branching_pop[j]) for j in range(0, MaxBinId)])
+        new_foliose_area = np.array([get_surface_area_from_population(j, new_foliose_pop[j]) for j in range(0, MaxBinId)])
+        new_other_area = np.array([get_surface_area_from_population(j, new_other_pop[j]) for j in range(0, MaxBinId)])
         
-        opts.current_surface_area_df = pd.DataFrame({ 'Branching': np.array([area for area in new_branching_area]), 
-                                                      'Foliose': np.array([area for area in new_foliose_area]), 
-                                                      'Other': np.array([area for area in new_other_area])})
+        opts.current_surface_area_df = pd.DataFrame({ 
+            'Branching': np.array([area for area in new_branching_area]), 
+            'Foliose': np.array([area for area in new_foliose_area]), 
+            'Other': np.array([area for area in new_other_area])
+        })
         
         # Update yearly parameters
         opts.yearly_surface_area_df_list.append(opts.current_surface_area_df)
         opts.yearly_population_df_list.append(opts.current_population_df)
         update_coral_parameters()
-        
 
-
-
-        # --- NEW: apply adjust_AS_based_on_DS AFTER update_coral_parameters() so
-        # calculate_benthos_after_pcm_ds (called inside update_coral_parameters) runs first.
+        # Apply substrate adjustment based on deposited sediment (if enabled)
         if getattr(opts, "enable_sediment_exposure", False):
             ds_diag = adjust_AS_based_on_DS(opts, opts.year)
 
-            # Build diagnostics & updated benthic row (match existing yearly_benthic_cover_df columns)
+            # Build diagnostics & updated benthic row
             new_benthic_row = {
                 'Year': opts.year,
                 'total_benthic_cover (%)': opts.current_benthic_cover.get('total', np.nan),
@@ -1408,9 +1359,8 @@ def run_yearly_change(PSD_df, Years):
                 'total_cc ': opts.current_total_coral_cover,
                 'unavailable_sub': opts.unavailable_substrate_percentage,
                 'tot': opts.available_substrate_percentage + opts.unavailable_substrate_percentage + opts.current_total_coral_cover,
-                # sediment diagnostics
                 'ds_mean_monthly_ds': ds_diag.get('mean_monthly_ds'),
-               'ds_loss_pct': ds_diag.get('loss_pct'),
+                'ds_loss_pct': ds_diag.get('loss_pct'),
                 'ds_recovered_pct': ds_diag.get('recovered_pct'),
             }
 
@@ -1419,18 +1369,18 @@ def run_yearly_change(PSD_df, Years):
                 if col not in opts.yearly_benthic_cover_df.columns:
                     opts.yearly_benthic_cover_df[col] = float('nan')
 
-            # Overwrite the last appended benthic row (update_coral_parameters already appended it)
+            # Overwrite the last appended benthic row
             last_idx = len(opts.yearly_benthic_cover_df) - 1
             for col, val in new_benthic_row.items():
                 opts.yearly_benthic_cover_df.at[last_idx, col] = val
-
-
-
-
+        
+    #Write stress memory into opts before returning
+    opts.growth_stress_memory    = globals().get('growth_stress_memory', {})
+    opts.pcm_stress_memory       = globals().get('pcm_stress_memory', {})
+    opts.last_sediment_event_year = globals().get('last_sediment_event_year', -999)
 
     # Return dataframe containing yearly total coral cover data    
     return opts.yearly_total_coral_cover_df
-
 
 def run_coral_model(PSD_df, Years):
     """
@@ -2025,6 +1975,7 @@ def get_PCM_rates_after_dhw(PCM_rates, dhw, branching_bleaching_rate, foliose_bl
     return pcm_rates_dhw
 
 ###Rio - add if sediment exposure is enabled run these functions
+    #Katya - added recovery lag parameters (tunable in config)
 def get_PCM_rates_after_DS_exp(PCM_rates, add_sedi_exp_per_year, year, sedi_exp_PCM_coeff):
     """
     Calculate updated Partial Colony Mortality (PCM) rates for each coral type based on deposited sediment exposure.
@@ -2048,36 +1999,38 @@ def get_PCM_rates_after_DS_exp(PCM_rates, add_sedi_exp_per_year, year, sedi_exp_
     add_deposited_sediment = add_sedi_exp_per_year.get(year, (0, 0))[1]
     susc = float(globals().get('sediment_susceptibilityPCM'))
 
+    # Get recovery lag parameters from globals
+    decay = globals().get('pcm_recovery_decay', 0.8)
+    stress_memory = globals().get('pcm_stress_memory', {})
+
     for coral_type in PCM_rates.columns:
-        # #pcm coeff positive 
-        coeff = sedi_exp_PCM_coeff.get(coral_type, 0) # get coefficient for coral type
+        coeff = sedi_exp_PCM_coeff.get(coral_type, 0)
+        
+        # Calculate CURRENT year's mortality stress from sediment
+        raw = coeff * add_deposited_sediment
+        raw = float(np.clip(raw, 0.0, 1.0))
+        current_stress = raw * susc
+        
+        # Get previous year's stress memory (or 0 if first year)
+        previous_stress = stress_memory.get((coral_type, year - 1), 0.0)
+        
+        # RECOVERY LAG: Cumulative stress decays exponentially
+        cumulative_stress = previous_stress * decay + current_stress
+        
+        # Store for next year
+        stress_memory[(coral_type, year)] = cumulative_stress
+        
         adjusted_rates = []
         for base_rate in PCM_rates[coral_type]:
-        #     raw=max(0, min (1,coeff * add_deposited_sediment))
-        #     factor=max(0, min (1, raw* sediment_susceptibilityPCM))
-        #     adjusted_rate = max(0, min( 1,base_rate +(base_rate* factor)))# clamp between 0 and 1
-        #     adjusted_rates.append(adjusted_rate)
-        # pcm_rates_ds[coral_type] = adjusted_rates
-                    # linear effect (coeff * additional sediment), clamp to [0,1]
-            raw = coeff * add_deposited_sediment
-            raw = float(np.clip(raw, 0.0, 1.0))
-
-        # effective impact after susceptibility
-            effective = raw * susc
-
-        # absolute additive change (PCM is an absolute probability increment)
-            adjusted_rate = base_rate + effective ### this one 
-            #OR
-            #adjusted_rate= base_rate + (base_rate * effective)
-
-        # another option: proportional change (use to scale base_rate)
-        #    adjusted_rate = base_rate * (1.0 + effective)#? - effective 
-        #    adjusted_rate = base_rate * (1.0 - effective)
-        # final clamp to valid probability range [0,1]
+            # Apply cumulative stress (additive to base mortality)
+            adjusted_rate = base_rate + cumulative_stress
             adjusted_rate = float(np.clip(adjusted_rate, 0.0, 1.0))
-
             adjusted_rates.append(adjusted_rate)
+        
         pcm_rates_ds[coral_type] = adjusted_rates
+    
+    # Update global stress memory
+    globals()['pcm_stress_memory'] = stress_memory
 
     return pcm_rates_ds
 
@@ -2107,6 +2060,48 @@ def get_PCM_rates_after_DS_exp(PCM_rates, add_sedi_exp_per_year, year, sedi_exp_
 # 	else:
 # 		growth_rate_ss = {i: growth_rate[i] * np.exp(-gr_sedi_sus_coeff[i] * current_add_suspended_sediment) for i in coral_type}
 # 		return growth_rate_ss
+
+def combine_PCM_rates(PCM_rates_dhw, PCM_rates_ds):
+    """
+    Combine partial colony mortality from bleaching (DHW) and deposited sediment.
+    
+    Uses multiplicative combination: both stressors reduce survival independently.
+    Combined mortality = 1 - (1 - dhw_mortality) * (1 - sediment_mortality)
+    
+    Parameters:
+    -----------
+    PCM_rates_dhw : pd.DataFrame
+        PCM rates adjusted for bleaching stress
+    PCM_rates_ds : pd.DataFrame
+        PCM rates adjusted for deposited sediment stress
+        
+    Returns:
+    --------
+    PCM_rates_combined : pd.DataFrame
+        Combined PCM rates including both stressors
+    """
+    import pandas as pd
+    
+    PCM_rates_combined = pd.DataFrame()
+    
+    for coral_type in PCM_rates_dhw.columns:
+        combined_rates = []
+        for i in range(len(PCM_rates_dhw[coral_type])):
+            dhw_pcm = PCM_rates_dhw[coral_type][i]
+            ds_pcm = PCM_rates_ds[coral_type][i]
+            
+            # Survival after both stressors = (1 - dhw_pcm) * (1 - ds_pcm)
+            # Combined mortality = 1 - survival
+            combined_pcm = 1 - (1 - dhw_pcm) * (1 - ds_pcm)
+            
+            # Clamp to [0, 1]
+            combined_pcm = max(0.0, min(1.0, combined_pcm))
+            combined_rates.append(combined_pcm)
+        
+        PCM_rates_combined[coral_type] = combined_rates
+    
+    return PCM_rates_combined
+
 def get_GR_after_ss(growth_rate, add_sedi_exp_per_year, year, sedi_exp_growth_coeff):
     """
     Calculate the growth rate after considering the effect of suspended sediment for each coral type and bin,
@@ -2133,17 +2128,40 @@ def get_GR_after_ss(growth_rate, add_sedi_exp_per_year, year, sedi_exp_growth_co
     growth_rate_ss = pd.DataFrame(columns=growth_rate.columns)
     add_suspended_sediment = add_sedi_exp_per_year.get(year, (0, 0))[0]
 
+    # Get recovery lag parameters from globals
+    decay = globals().get('growth_recovery_decay', 0.7)
+    stress_memory = globals().get('growth_stress_memory', {})
+
     for coral in growth_rate.columns:
         coeff = sedi_exp_growth_coeff.get(coral, 0)
+        
+        # Calculate CURRENT year's stress from sediment
+        raw = max(-1, min(0, coeff * add_suspended_sediment))
+        effective = max(-1, min(0, raw * sediment_susceptibilityGR))
+        current_stress = -effective  # Convert to positive stress value (0 to 1)
+        
+        # Get previous year's stress memory (or 0 if first year)
+        previous_stress = stress_memory.get((coral, year - 1), 0.0)
+        
+        # RECOVERY LAG: Cumulative stress decays exponentially
+        # stress[year] = stress[year-1] * decay + current_stress
+        cumulative_stress = previous_stress * decay + current_stress
+        
+        # Store for next year
+        stress_memory[(coral, year)] = cumulative_stress
+        
+        # Apply cumulative stress to growth rate
+        factor = max(0.0, min(1.0, 1.0 - cumulative_stress))
+        
         adjusted_rates = []
         for base_rate in growth_rate[coral]:
-            # compute raw multiplicative factor then clamp to [0.0, 1.0]
-            raw = max(-1, min(0,coeff * add_suspended_sediment))
-            effective =  max(-1, min(0,raw * sediment_susceptibilityGR))
-            factor = max(0.0, min(1.0, 1+ effective))
-            adjusted_rate = max(0.0, base_rate * factor) # clamp adjusted_rate to be >= 0.0 (prevent negative growth)
+            adjusted_rate = max(0.0, base_rate * factor)
             adjusted_rates.append(adjusted_rate)
+        
         growth_rate_ss[coral] = adjusted_rates
+    # Update global stress memory
+    globals()['growth_stress_memory'] = stress_memory
+    
     return growth_rate_ss
 
 
@@ -2322,9 +2340,12 @@ def adjust_AS_based_on_DS(opts, year):
         print("ERROR: adjust_AS_based_on_DS missing required items:", ", ".join(missing))
         raise RuntimeError("Missing required inputs for adjust_AS_based_on_DS. See message above.")
 
-    # 3) collect 12 raw monthly deposited values for the model year; fail if any missing / NaN
+    # 3) collect 12 monthly deposited values for the model year; fail if any missing / NaN
+    # subtract to get additional sediment (consistent with other sediment features)
     monthly = []
     bad = []
+    baseline_dep = float(globals().get("baseline_deposited_sediment", 0.0))
+    
     for m in range(1, 13):
         key = (int(year), int(m))
         if key not in sedi_years:
@@ -2339,14 +2360,18 @@ def adjust_AS_based_on_DS(opts, year):
         if pd.isna(dep):
             bad.append(f"{key} (NaN)")
         else:
-            monthly.append(float(dep))
+            # Subtract baseline and clamp to 0 (consistent with additional_sediment_exposure)
+            additional_dep = max(0.0, float(dep) - baseline_dep)
+            monthly.append(additional_dep)
+    
     if bad or len(monthly) != 12:
         print("ERROR: adjust_AS_based_on_DS cannot compute mean_monthly_ds; issues with sedi_years:", "; ".join(bad))
         raise RuntimeError("Incomplete or invalid monthly deposited-sediment data in sedi_years.")
 
-    # 4) compute the mean monthly deposited sediment (mg/cm2/day)
+    # 4) compute the mean monthly ADDITIONAL deposited sediment (mg/cm2/day)
+    # This is now relative to baseline, not absolute
     mean_monthly_ds = float(sum(monthly) / 12.0)
-
+    
     # 5) read user parameters (guaranteed present above)
     threshold = float(globals()["ds_AS_threshold"])
     conv_per_unit = float(globals()["ds_AS_conversion"])
@@ -2385,8 +2410,11 @@ def adjust_AS_based_on_DS(opts, year):
 
     else:
         # RECOVERY: sediment -> hard_substrate + dead_coral (50:50)
+        # Apply slowdown factor to make recovery slower than burial
+        slowdown = globals().get('substrate_recovery_slowdown', 0.2) #get from config or use 0.2 as default if not present
+        
         deficit = threshold - mean_monthly_ds
-        raw_recover = conv_per_unit * deficit
+        raw_recover = conv_per_unit * deficit * slowdown  # SLOWER recovery
         recover_pct = min(raw_recover, conv_limit)
         recover_pct = min(recover_pct, bc['sediment'])  # cannot recover more sediment than exists
         recovered_pct = recover_pct
