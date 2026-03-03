@@ -1,24 +1,28 @@
-name: Mirror to Public Repo
+name: Mirror to public
 
 on:
   push:
     branches:
-      - main        # Add any branches you want to mirror
-      - release/**  # Example: mirror all release branches
+      - main
+      - '**'        # run on any branch
+  workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   mirror:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout source (private repo)
+      - name: Checkout private repo
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Important: fetch full history, not just latest commit
+          fetch-depth: 0
+          token: ${{ secrets.MIRROR_TOKEN }}
 
       - name: Push to public mirror
-        env:
-          PUBLIC_REPO: https://x-access-token:${{ secrets.PUBLIC_REPO_TOKEN }}@github.com/katyaov/Coral-Model-Public.git
         run: |
-          git remote add public $PUBLIC_REPO
-          git push public ${{ github.ref_name }}:${{ github.ref_name }} --force
+          git remote add public https://x-access-token:${{ secrets.MIRROR_TOKEN }}@github.com/katyaov/Coral-Model-Public.git
+          git remote -v
+          git push --mirror public
