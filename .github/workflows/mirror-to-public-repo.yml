@@ -1,10 +1,10 @@
-name: Mirror to public
+name: Mirror to public (no workflows)
 
 on:
   push:
     branches:
       - main
-      - '**'        # run on any branch
+      - '**'
   workflow_dispatch:
 
 permissions:
@@ -19,10 +19,18 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          token: ${{ secrets.PUBLIC_REPO_TOKEN }}
 
-      - name: Push to public mirror
+      - name: Mirror without workflows
+        env:
+          MIRROR_TOKEN: ${{ secrets.PUBLIC_REPO_TOKEN }}
         run: |
-          git remote add public https://x-access-token:${{ secrets.PUBLIC_REPO_TOKEN }}@github.com/katyaov/Coral-Model-Public.git
-          git remote -v
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          
+          # Remove workflows from private repo before pushing
+          git rm -r --quiet .github/workflows/ 2>/dev/null || true
+          git rm -r --quiet .github/ 2>/dev/null || true
+          
+          # Add public remote and push ALL branches/tags (minus workflows)
+          git remote add public https://x-access-token:${PUBLIC_REPO_TOKEN}@github.com/katyaov/Coral-Model-Public.git || true
           git push --mirror public
