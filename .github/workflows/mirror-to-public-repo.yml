@@ -23,15 +23,15 @@ jobs:
         env:
           PUBLIC_REPO_TOKEN: ${{ secrets.PUBLIC_REPO_TOKEN }}
         run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # Configure git to ALWAYS use our PAT
+          git config --global url."https://x-access-token:${PUBLIC_REPO_TOKEN}@github.com/".insteadOf "https://github.com/"
           
-          # Remove workflows from private repo before pushing
+          git config --global user.name "katyaov"
+          git config --global user.email "katyaov@github.com"
+          
+          # Remove workflows
           git rm -r --quiet .github/workflows/ 2>/dev/null || true
           git rm -r --quiet .github/ 2>/dev/null || true
           
-          # Add public remote
-          git remote add public https://x-access-token:${PUBLIC_REPO_TOKEN}@github.com/katyaov/Coral-Model-Public.git || true
-          
-          # Push ONLY main branch (no --mirror, no other branches/tags)
-          git push public main:main
+          # Simple push - PAT is now used automatically
+          git push https://github.com/katyaov/Coral-Model-Public.git main:main
