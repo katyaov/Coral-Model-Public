@@ -23,6 +23,6 @@ jobs:
 
       - name: Push to public mirror
         run: |
-          git remote add public https://x-access-token:${{ secrets.MIRROR_TOKEN }}@github.com/katyaov/Coral-Model-Public.git
+          git remote add public https://x-access-token:${{ secrets.PUBLIC_REPO_TOKEN }}@github.com/katyaov/Coral-Model-Public.git
           git remote -v
           git push --mirror public
