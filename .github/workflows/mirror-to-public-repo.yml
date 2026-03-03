@@ -6,32 +6,27 @@ on:
       - main
   workflow_dispatch:
 
-permissions:
-  contents: write
-
 jobs:
   mirror:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout private repo
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Mirror main branch only
+      - name: Mirror with explicit PAT checkout
         env:
           PUBLIC_REPO_TOKEN: ${{ secrets.PUBLIC_REPO_TOKEN }}
         run: |
-          # Configure git to ALWAYS use our PAT
-          git config --global url."https://x-access-token:${PUBLIC_REPO_TOKEN}@github.com/".insteadOf "https://github.com/"
+          # Clone public repo directly with PAT (no checkout action)
+          git clone "https://x-access-token:${PUBLIC_REPO_TOKEN}@github.com/katyaov/Coral-Model-Public.git" public-repo
+          cd public-repo
           
-          git config --global user.name "katyaov"
-          git config --global user.email "katyaov@github.com"
+          # Fetch main from private repo and hard reset
+          git remote add private https://x-access-token:${PUBLIC_REPO_TOKEN}@github.com/katyaov/Coral-Model.git || true
+          git fetch private main
+          git checkout main
+          git reset --hard private/main
           
-          # Remove workflows
+          # Remove workflows if they exist
           git rm -r --quiet .github/workflows/ 2>/dev/null || true
           git rm -r --quiet .github/ 2>/dev/null || true
           
-          # Simple push - PAT is now used automatically
-          git push https://github.com/katyaov/Coral-Model-Public.git main:main
+          # Push back to public main
+          git push origin main
