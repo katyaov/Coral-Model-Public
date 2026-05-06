@@ -9,6 +9,8 @@ import pandas as pd
 
 growthOnly = False
 no_recruitment = False
+no_brooder_recruitment = False #if you want to selectively turn off brooder recruitment, toggle no_recruitment = FALSE and no_brooder_recruitment = TRUE
+no_spawner_recruitment = False #if you want to selectively turn off spawner recruitment, toggle no_recruitment = FALSE and no_spawner_recruitment = TRUE
 number_of_iterations = 100 #you can choose how many times to run the model (100 times is recommended)
 
 # choose from ['protected','semiprotected','exposed']
