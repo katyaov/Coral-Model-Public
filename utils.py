@@ -40,6 +40,9 @@ def get_recruited_corals(available_substrate_percentage, pop_flag = True):
 
     '''
     
+    if no_recruitment:
+        return [0, 0, 0]
+    
     # Calculate the available substrate area for brooders    
     brooder_cover_m2 = opts.brooder_cover*colonies_spawning_decline_rate(opts.current_dhw)*opts.reef_area/100
     brooder_cover_cm2_per_m2 = brooder_cover_m2 * 10000 /opts.reef_area
@@ -97,6 +100,15 @@ def get_recruited_corals(available_substrate_percentage, pop_flag = True):
     surfaceArea5cm_spawner_cm2 = [area_parameter * np.pi*(binDiameter/2)**2*i for i in num_recruits_spawner]
     surfaceArea_spawner_m2 = [i/10000 for i in surfaceArea5cm_spawner_cm2]
     surfaceArea_spawner_percentage = [100*i/opts.reef_area for i in surfaceArea_spawner_m2]
+
+    # ── Selective suppression for spawners or brooders ──────────────────────────────────────────────
+    if no_brooder_recruitment:
+        surfaceArea_brooder_m2 = 0
+        surfaceArea_brooder_percentage = 0
+
+    if no_spawner_recruitment:
+        surfaceArea_spawner_m2 = [0, 0]
+        surfaceArea_spawner_percentage = [0, 0]
     
     recruited_branching_area_m2 = surfaceArea_brooder_m2 + surfaceArea_spawner_m2[0] * opts.current_coral_cover['Branching']/(opts.current_coral_cover['Branching'] + opts.current_coral_cover['Foliose'])
     recruited_foliose_area_m2 = surfaceArea_spawner_m2[0] * opts.current_coral_cover['Foliose']/(opts.current_coral_cover['Branching'] + opts.current_coral_cover['Foliose'])
@@ -108,17 +120,13 @@ def get_recruited_corals(available_substrate_percentage, pop_flag = True):
     
     total_recruitment_m2 = surfaceArea_brooder_m2 + sum(surfaceArea_spawner_m2)
     total_recruitment_perc = surfaceArea_brooder_percentage + sum(surfaceArea_spawner_percentage)
-    
-    if no_recruitment:
-        return [0, 0, 0]
-    
-    else:
-    
-        if pop_flag:
-            return [ int(recruited_branching_population), int(recruited_foliose_population), int(recruited_other_population) ]
 
-        else:
-            return [ recruited_branching_area_m2, recruited_foliose_area_m2, recruited_other_area_m2 ]
+    if pop_flag:
+        return [ int(recruited_branching_population), int(recruited_foliose_population), int(recruited_other_population) ]
+
+    else:
+        return [ recruited_branching_area_m2, recruited_foliose_area_m2, recruited_other_area_m2 ]
+
 
 
 def get_population_number_from_surface_area(binId, surface_area):
